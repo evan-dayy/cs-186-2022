@@ -204,9 +204,7 @@ AS
     ),
     
     helper_1 as (
-		select gro, count(gro) as cnt
-		from helper
-		group by gro
+		select gro, count(gro) as cnt from helper group by gro
         ), 
 	
     tab_1 as (
@@ -218,15 +216,10 @@ AS
     ), 
     
     tab as (
-		select *
-        from tab_1
-        union 
-        select * 
-        from tab_2
+		select * from tab_1 union select * from tab_2
 	)
     
-    select x, lower, upper, tab.cnt
-    from label left join tab on label.x = tab.gro
+    select x, lower, upper, tab.cnt from label left join tab on label.x = tab.gro
 ;
 
 -- Question 4iii

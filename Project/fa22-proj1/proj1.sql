@@ -15,6 +15,7 @@ DROP VIEW IF EXISTS q4ii;
 DROP VIEW IF EXISTS q4iii;
 DROP VIEW IF EXISTS q4iv;
 DROP VIEW IF EXISTS q4v;
+DROP VIEW IF EXISTS label;
 
 -- Question 0
 CREATE VIEW q0(era)
@@ -154,11 +155,78 @@ AS
   order by yearid
 ;
 
+CREATE VIEW label (x, lower, upper) 
+AS
+	WITH T as (
+		Select 0 as a
+		UNION 
+		Select 1 as a
+		UNION 
+		Select 2 as a
+		UNION 
+		Select 3 as a
+		UNION 
+		Select 4 as a
+		UNION 
+		Select 5 as a
+		UNION 
+		Select 6 as a
+		UNION 
+		Select 7 as a
+		UNION 
+		Select 8 as a
+	),
+    
+    gap as (
+		select min, max, (max - min) / 10.0 as g from q4i where yearid = 2016
+    )
+    
+    select T.a x, gap.min + gap.g * T.a lower, gap.min + gap.g * (T.a + 1) upper
+    from T, gap
+    Union 
+    Select 9 x, gap.min + 9 * gap.g, gap.max
+    from T, gap
+;
+
+
 
 -- Question 4ii
 CREATE VIEW q4ii(binid, low, high, count)
 AS
-  SELECT 1, 1, 1, 1 -- replace this line
+	with gap as (
+		select min, max, (max - min) / 10.0 as g from q4i where yearid = 2016
+    ),
+    
+    helper as (
+		select s.salary s, cast((s.salary - g.min) / g.g as INT) as gro
+		from salaries s left join gap g
+		where s.yearid = 2016
+    ),
+    
+    helper_1 as (
+		select gro, count(gro) as cnt
+		from helper
+		group by gro
+        ), 
+	
+    tab_1 as (
+		select * from helper_1 where gro <= 8
+    ), 
+    
+    tab_2 as (
+		select 9 as gro, sum(cnt) from helper_1 where gro > 8 group by 1
+    ), 
+    
+    tab as (
+		select *
+        from tab_1
+        union 
+        select * 
+        from tab_2
+	)
+    
+    select x, lower, upper, tab.cnt
+    from label left join tab on label.x = tab.gro
 ;
 
 -- Question 4iii

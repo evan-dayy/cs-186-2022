@@ -19,49 +19,80 @@ DROP VIEW IF EXISTS q4v;
 -- Question 0
 CREATE VIEW q0(era)
 AS
-  SELECT 1 -- replace this line
+  SELECT MAX(era)
+  FROM pitching
 ;
 
 -- Question 1i
 CREATE VIEW q1i(namefirst, namelast, birthyear)
 AS
-  SELECT 1, 1, 1 -- replace this line
+  SELECT namefirst, namelast, birthyear
+  FROM people 
+  WHERE weight > 300
 ;
 
 -- Question 1ii
 CREATE VIEW q1ii(namefirst, namelast, birthyear)
 AS
-  SELECT 1, 1, 1 -- replace this line
+  SELECT namefirst, namelast, birthyear
+  FROM people 
+  WHERE namefirst LIKE "% %"
+  ORDER BY namefirst, namelast
+  
 ;
 
 -- Question 1iii
 CREATE VIEW q1iii(birthyear, avgheight, count)
 AS
-  SELECT 1, 1, 1 -- replace this line
+  SELECT birthyear, avgheight, count
+  FROM (
+	SELECT birthYear, ROUND(AVG(height), 4) AS avgheight, COUNT(*) as count
+    FROM people
+    GROUP BY birthYear
+    ) a
 ;
 
 -- Question 1iv
 CREATE VIEW q1iv(birthyear, avgheight, count)
 AS
-  SELECT 1, 1, 1 -- replace this line
+  SELECT birthyear, avgheight, count
+  FROM q1iii
+  WHERE avgheight > 70
+  ORDER BY birthyear
 ;
 
 -- Question 2i
 CREATE VIEW q2i(namefirst, namelast, playerid, yearid)
 AS
-  SELECT 1, 1, 1, 1 -- replace this line
+  SELECT p.namefirst, p.namelast, p.playerID, h.yearID
+  from people p, halloffame h
+  WHERE p.playerID = h.playerID and h.inducted = "Y"
+  ORDER BY h.yearid DESC, p.playerid
 ;
 
 -- Question 2ii
 CREATE VIEW q2ii(namefirst, namelast, playerid, schoolid, yearid)
 AS
-  SELECT 1, 1, 1, 1, 1 -- replace this line
+  SELECT q.namefirst, q.namelast, q.playerid, s.schoolid, q.yearid
+  FROM q2i q 
+  LEFT JOIN collegeplaying c ON q.playerid = c.playerid
+  LEFT JOIN schools s ON c.schoolID = s.schoolID
+  WHERE s.schoolState = "CA"
+  ORDER BY q.yearid DESC, s.schoolID, q.playerid
 ;
 
 -- Question 2iii
 CREATE VIEW q2iii(playerid, namefirst, namelast, schoolid)
 AS
-  SELECT 1, 1, 1, 1 -- replace this line
+  SELECT DISTINCT q0.playerid, q0.namefirst, q0.namelast, q1.schoolid
+  FROM q2i q0
+  LEFT JOIN 
+   (
+	  SELECT q.namefirst, q.namelast, q.playerid as playerid, c.schoolid as schoolid, q.yearid
+	  FROM q2i q 
+	  inner JOIN collegeplaying c ON q.playerid = c.playerid
+   )q1 ON q0.playerid = q1.playerid
+  ORDER BY q0.playerid DESC, q1.schoolID
 ;
 
 -- Question 3i

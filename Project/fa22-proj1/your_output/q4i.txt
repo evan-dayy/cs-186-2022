@@ -1,2 +1,0 @@
-yearid|min|max|ROUND(avg, 4)
-1|1|1|1.0

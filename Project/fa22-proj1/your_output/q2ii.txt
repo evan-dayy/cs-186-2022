@@ -1,2 +1,0 @@
-namefirst|namelast|playerid|schoolid|yearid
-1|1|1|1|1

@@ -1,2 +1,0 @@
-namefirst|namelast|birthyear
-1|1|1

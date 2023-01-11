@@ -1,2 +1,0 @@
-binid|low|high|count
-1|1|1|1

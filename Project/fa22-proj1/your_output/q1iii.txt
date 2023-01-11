@@ -1,0 +1,2 @@
+birthyear|ROUND(avgheight, 4)|count
+1|1.0|1

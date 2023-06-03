@@ -9,6 +9,7 @@ import edu.berkeley.cs186.database.memory.BufferManager;
 import edu.berkeley.cs186.database.memory.Page;
 import edu.berkeley.cs186.database.table.RecordId;
 
+import javax.xml.crypto.Data;
 import java.nio.ByteBuffer;
 import java.util.*;
 
@@ -63,7 +64,6 @@ class InnerNode extends BPlusNode {
         try {
             assert (keys.size() <= 2 * metadata.getOrder());
             assert (keys.size() + 1 == children.size());
-
             this.metadata = metadata;
             this.bufferManager = bufferManager;
             this.treeContext = treeContext;
@@ -81,8 +81,44 @@ class InnerNode extends BPlusNode {
     @Override
     public LeafNode get(DataBox key) {
         // TODO(proj2): implement
+        return get_recursive(this, key);
+    }
 
-        return null;
+    private LeafNode get_recursive(InnerNode node, DataBox key) {
+        int idx = binarySearchKey(node.getKeys(), key);
+        long child_page_num = node.getChildren().get(idx);
+        try {
+            InnerNode nxt = InnerNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+            return get_recursive(nxt, key);
+        } catch(AssertionError e) {
+            LeafNode res = LeafNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+            // previous inner node still try to access the current page
+            res.getPage().unpin();
+            return res;
+        }
+    }
+
+    private int binarySearchKey(List<DataBox> keys, DataBox target) {
+        int left = 0, right = keys.size();
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            if (keys.get(mid).compareTo(target) > 0) right = mid;
+            else left = mid + 1;
+        }
+        return left;
+    }
+
+    private LeafNode get_recursive(InnerNode node, int idx) {
+        long child_page_num = node.getChildren().get(idx);
+        try {
+            InnerNode nxt = InnerNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+            return get_recursive(nxt, idx);
+        } catch(AssertionError e) {
+            LeafNode res = LeafNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+            // previous inner node still try to access the current page
+            res.getPage().unpin();
+            return res;
+        }
     }
 
     // See BPlusNode.getLeftmostLeaf.
@@ -90,16 +126,52 @@ class InnerNode extends BPlusNode {
     public LeafNode getLeftmostLeaf() {
         assert(children.size() > 0);
         // TODO(proj2): implement
-
-        return null;
+        return get_recursive(this, 0);
     }
 
     // See BPlusNode.put.
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
+        return put_recursive(this, key, rid);
+    }
 
-        return Optional.empty();
+    private Optional<Pair<DataBox, Long>> put_recursive(InnerNode node, DataBox key, RecordId rid) {
+        int idx = binarySearchKey(node.getKeys(), key);
+        long child_page_num = node.getChildren().get(idx);
+        try {
+            InnerNode nxt = InnerNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+            Optional<Pair<DataBox, Long>> feedback = put_recursive(nxt, key, rid);
+            // case do not need to do anything
+            if (feedback.equals(Optional.empty())) return Optional.empty();
+            DataBox newKey = feedback.get().getFirst();
+            long newPage = feedback.get().getSecond();
+            int i = binarySearchKey(node.getKeys(), newKey);
+            node.getKeys().add(i, newKey);
+            node.getChildren().add(i + 1, newPage);
+            // case it return the new key and also the current keys are not full
+            node.sync();
+            if (node.getKeys().size() <= metadata.getOrder() * 2) return Optional.empty();
+            // case it return the new key and also the current keys have already full
+            // updating the current node
+            List<DataBox> leftKeys = node.getKeys().subList(0, metadata.getOrder());
+            node.setKeys(leftKeys);
+            List<Long> leftChildren= node.getChildren().subList(0, metadata.getOrder() + 1);
+            node.setChildren(leftChildren);
+            node.sync();
+            // for the newly created page
+            List<DataBox> rightKeys = node.getKeys().subList(metadata.getOrder() + 1, node.getKeys().size());
+            List<Long> rightChildren = node.getChildren().subList(metadata.getOrder() + 1, node.getChildren().size());
+            Page page = this.bufferManager.fetchNewPage(treeContext, metadata.getPartNum());
+            new InnerNode(metadata, bufferManager, page, rightKeys, rightChildren, treeContext);
+            // return the result
+            return Optional.of(new Pair<DataBox, Long>(node.getKeys().get(metadata.getOrder()), page.getPageNum()));
+        } catch(AssertionError e) {
+            LeafNode res = LeafNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+            // previous inner node still try to access the current page
+            res.getPage().unpin();
+            return res.put(key, rid);
+        }
     }
 
     // See BPlusNode.bulkLoad.
@@ -107,7 +179,6 @@ class InnerNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
         // TODO(proj2): implement
-
         return Optional.empty();
     }
 
@@ -115,8 +186,8 @@ class InnerNode extends BPlusNode {
     @Override
     public void remove(DataBox key) {
         // TODO(proj2): implement
-
-        return;
+        LeafNode target = get(key);
+        target.remove(key);
     }
 
     // Helpers /////////////////////////////////////////////////////////////////
@@ -150,9 +221,17 @@ class InnerNode extends BPlusNode {
         return keys;
     }
 
+    void setKeys(List<DataBox> keys) {
+        this.keys = keys;
+    }
+
     // Just for testing.
     List<Long> getChildren() {
         return children;
+    }
+
+    void setChildren(List<Long> children) {
+        this.children = children;
     }
     /**
      * Returns the largest number d such that the serialization of an InnerNode

@@ -135,7 +135,6 @@ class LeafNode extends BPlusNode {
             this.keys = new ArrayList<>(keys);
             this.rids = new ArrayList<>(rids);
             this.rightSibling = rightSibling;
-
             sync();
         } finally {
             page.unpin();
@@ -147,24 +146,56 @@ class LeafNode extends BPlusNode {
     @Override
     public LeafNode get(DataBox key) {
         // TODO(proj2): implement
-
-        return null;
+        // just return itself because leaf node is a leaf node
+        return this;
     }
 
     // See BPlusNode.getLeftmostLeaf.
     @Override
     public LeafNode getLeftmostLeaf() {
         // TODO(proj2): implement
-
-        return null;
+        return this;
     }
 
     // See BPlusNode.put.
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
+        int order = this.metadata.getOrder();
+        int size = this.keys.size();
+        // case the duplication occurs
+        if (this.keys.contains(key)) throw new BPlusTreeException("Duplicated Key");
+        int idx = binarySearchKey(this.keys, key);
+        this.keys.add(idx, key);
+        this.rids.add(idx, rid);
+        // if the insertion does not cause the overflow, then return the optional empty
+        if (size <= 2 * order) {
+            sync();
+            return Optional.empty();
+        }
+        // what if the case it is overflowed
+        List<DataBox> left_keys = this.keys.subList(0, order);
+        List<DataBox> right_keys = this.keys.subList(order, this.keys.size());
+        List<RecordId> left_rids = this.rids.subList(0, order);
+        List<RecordId> right_rids = this.rids.subList(order, this.rids.size());
+        this.keys = left_keys;
+        this.rids = left_rids;
+        Page page = bufferManager.fetchNewPage(this.treeContext, this.metadata.getPartNum());
+        new LeafNode(this.metadata, this.bufferManager, page, right_keys,
+                        right_rids, this.rightSibling, this.treeContext);
+        this.rightSibling = Optional.of(page.getPageNum());
+        sync();
+        return Optional.of(new Pair<DataBox, Long>(right_keys.get(0), page.getPageNum()));
+    }
 
-        return Optional.empty();
+    private int binarySearchKey(List<DataBox> keys, DataBox target) {
+        int left = 0, right = keys.size();
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            if (keys.get(mid).compareTo(target) > 0) right = mid;
+            else left = mid + 1;
+        }
+        return left;
     }
 
     // See BPlusNode.bulkLoad.
@@ -180,8 +211,10 @@ class LeafNode extends BPlusNode {
     @Override
     public void remove(DataBox key) {
         // TODO(proj2): implement
-
-        return;
+        int idx = this.keys.indexOf(key);
+        this.keys.remove(key);
+        this.rids.remove(idx);
+        sync();
     }
 
     // Iterators ///////////////////////////////////////////////////////////////
@@ -376,8 +409,26 @@ class LeafNode extends BPlusNode {
         // Note: LeafNode has two constructors. To implement fromBytes be sure to
         // use the constructor that reuses an existing page instead of fetching a
         // brand new one.
-
-        return null;
+        Page page = bufferManager.fetchPage(treeContext, pageNum);
+        Buffer buf = page.getBuffer();
+        // check the node type
+        byte nodeType = buf.get();
+        assert(nodeType == (byte) 1);
+        long rightSibling = buf.getLong();
+        int n = buf.getInt();
+        List<DataBox> keys = new ArrayList<>();
+        List<RecordId> rids = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            keys.add(DataBox.fromBytes(buf, metadata.getKeySchema()));
+            rids.add(RecordId.fromBytes(buf));
+        }
+        return new LeafNode(metadata,
+                            bufferManager,
+                            page,
+                            keys,
+                            rids,
+                            Optional.of(rightSibling),
+                            treeContext);
     }
 
     // Builtins ////////////////////////////////////////////////////////////////

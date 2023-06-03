@@ -211,6 +211,7 @@ public class TestInnerNode {
         LeafNode leaf0 = getLeaf(this.leaf0);
         assertNotNull(leaf0);
         for (int i = 0; i < 10; ++i) {
+
             assertEquals(leaf0, inner.get(new IntDataBox(i)));
         }
 

@@ -110,15 +110,11 @@ class InnerNode extends BPlusNode {
 
     private LeafNode get_recursive(InnerNode node, int idx) {
         long child_page_num = node.getChildren().get(idx);
-        try {
-            InnerNode nxt = InnerNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
-            return get_recursive(nxt, idx);
-        } catch(AssertionError e) {
-            LeafNode res = LeafNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
-            // previous inner node still try to access the current page
-            res.getPage().unpin();
-            return res;
+        BPlusNode nxt = BPlusNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+        if (nxt instanceof InnerNode) {
+            return get_recursive((InnerNode) nxt, idx);
         }
+        return (LeafNode) nxt;
     }
 
     // See BPlusNode.getLeftmostLeaf.
@@ -133,45 +129,57 @@ class InnerNode extends BPlusNode {
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
-        return put_recursive(this, key, rid);
+        Optional<Pair<DataBox, Long>> feedback = put_recursive(this, key, rid);
+        if (feedback.equals(Optional.empty())) return feedback;
+        return allocate(feedback.get(), this);
     }
 
     private Optional<Pair<DataBox, Long>> put_recursive(InnerNode node, DataBox key, RecordId rid) {
         int idx = binarySearchKey(node.getKeys(), key);
         long child_page_num = node.getChildren().get(idx);
-        try {
-            InnerNode nxt = InnerNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
-            Optional<Pair<DataBox, Long>> feedback = put_recursive(nxt, key, rid);
-            // case do not need to do anything
-            if (feedback.equals(Optional.empty())) return Optional.empty();
-            DataBox newKey = feedback.get().getFirst();
-            long newPage = feedback.get().getSecond();
-            int i = binarySearchKey(node.getKeys(), newKey);
-            node.getKeys().add(i, newKey);
-            node.getChildren().add(i + 1, newPage);
-            // case it return the new key and also the current keys are not full
-            node.sync();
-            if (node.getKeys().size() <= metadata.getOrder() * 2) return Optional.empty();
-            // case it return the new key and also the current keys have already full
-            // updating the current node
-            List<DataBox> leftKeys = node.getKeys().subList(0, metadata.getOrder());
-            node.setKeys(leftKeys);
-            List<Long> leftChildren= node.getChildren().subList(0, metadata.getOrder() + 1);
-            node.setChildren(leftChildren);
-            node.sync();
-            // for the newly created page
-            List<DataBox> rightKeys = node.getKeys().subList(metadata.getOrder() + 1, node.getKeys().size());
-            List<Long> rightChildren = node.getChildren().subList(metadata.getOrder() + 1, node.getChildren().size());
-            Page page = this.bufferManager.fetchNewPage(treeContext, metadata.getPartNum());
-            new InnerNode(metadata, bufferManager, page, rightKeys, rightChildren, treeContext);
-            // return the result
-            return Optional.of(new Pair<DataBox, Long>(node.getKeys().get(metadata.getOrder()), page.getPageNum()));
-        } catch(AssertionError e) {
-            LeafNode res = LeafNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
-            // previous inner node still try to access the current page
-            res.getPage().unpin();
-            return res.put(key, rid);
+        Page p = bufferManager.fetchPage(treeContext, child_page_num);
+        Buffer buf = p.getBuffer();
+        p.unpin();
+        if (buf.get() == 1) {
+            LeafNode nxt = LeafNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+            return nxt.put(key, rid);
         }
+        InnerNode nxt = InnerNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+        Optional<Pair<DataBox, Long>> feedback = put_recursive(nxt, key, rid);
+        // case do not need to do anything
+        if (feedback.equals(Optional.empty())) return Optional.empty();
+        // allocation process
+        return allocate(feedback.get(), nxt);
+    }
+
+    private Optional<Pair<DataBox, Long>> allocate(Pair<DataBox, Long> feedback, InnerNode node) {
+        DataBox newKey = feedback.getFirst();
+        long newPage = feedback.getSecond();
+        int i = binarySearchKey(node.getKeys(), newKey);
+        node.getKeys().add(i, newKey);
+        node.getChildren().add(i + 1, newPage);
+        // case it return the new key and also the current keys are not full
+        if (node.getKeys().size() <= metadata.getOrder() * 2) {
+            node.sync();
+            return Optional.empty();
+        }
+        // case it return the new key and also the current keys have already full
+
+        List<DataBox> leftKeys = node.getKeys().subList(0, metadata.getOrder());
+        List<Long> leftChildren= node.getChildren().subList(0, metadata.getOrder() + 1);
+        // for the newly created page
+        List<DataBox> rightKeys = node.getKeys().subList(metadata.getOrder() + 1, node.getKeys().size());
+        List<Long> rightChildren = node.getChildren().subList(metadata.getOrder() + 1, node.getChildren().size());
+        // set up the result
+        DataBox returnKey = node.getKeys().get(metadata.getOrder());
+        Page page = this.bufferManager.fetchNewPage(treeContext, metadata.getPartNum());
+        new InnerNode(metadata, bufferManager, page, rightKeys, rightChildren, treeContext);
+        // updating the current node
+        node.setKeys(leftKeys);
+        node.setChildren(leftChildren);
+        node.sync();
+        // return the result
+        return Optional.of(new Pair<DataBox, Long>(returnKey, page.getPageNum()));
     }
 
     // See BPlusNode.bulkLoad.

@@ -5,6 +5,7 @@ import edu.berkeley.cs186.database.common.Pair;
 import edu.berkeley.cs186.database.concurrency.LockContext;
 import edu.berkeley.cs186.database.databox.DataBox;
 import edu.berkeley.cs186.database.databox.Type;
+import edu.berkeley.cs186.database.io.DiskSpaceManager;
 import edu.berkeley.cs186.database.memory.BufferManager;
 import edu.berkeley.cs186.database.memory.Page;
 import edu.berkeley.cs186.database.table.RecordId;
@@ -162,14 +163,13 @@ class LeafNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
         int order = this.metadata.getOrder();
-        int size = this.keys.size();
         // case the duplication occurs
         if (this.keys.contains(key)) throw new BPlusTreeException("Duplicated Key");
         int idx = binarySearchKey(this.keys, key);
         this.keys.add(idx, key);
         this.rids.add(idx, rid);
         // if the insertion does not cause the overflow, then return the optional empty
-        if (size <= 2 * order) {
+        if (this.keys.size() <= 2 * order) {
             sync();
             return Optional.empty();
         }
@@ -253,8 +253,9 @@ class LeafNode extends BPlusNode {
         if (!rightSibling.isPresent()) {
             return Optional.empty();
         }
-
         long pageNum = rightSibling.get();
+        // debugging the BPlusTree Iterator
+        if (pageNum == DiskSpaceManager.INVALID_PAGE_NUM) return Optional.empty();
         return Optional.of(LeafNode.fromBytes(metadata, bufferManager, treeContext, pageNum));
     }
 

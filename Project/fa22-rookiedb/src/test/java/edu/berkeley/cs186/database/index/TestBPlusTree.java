@@ -96,6 +96,8 @@ public class TestBPlusTree {
                     newIOs - prevIOs > maxIOs);
 
         List<T> xs = new ArrayList<>();
+        // conditional debugging
+        // int i = 0;
         while (iter.hasNext()) {
             prevIOs = bufferManager.getNumIOs();
             xs.add(iter.next());
@@ -104,6 +106,7 @@ public class TestBPlusTree {
             assertFalse("too many I/Os used per next() call (" + (newIOs - prevIOs) + " > " + maxIOs +
                         ") - are you materializing more than you need?",
                         newIOs - prevIOs > maxIOs);
+            // i ++;
         }
 
         long finalIOs = bufferManager.getNumIOs();
@@ -439,6 +442,8 @@ public class TestBPlusTree {
                 for (int i = 0; i < keys.size(); ++i) {
                     tree.put(keys.get(i), rids.get(i));
                 }
+                // checking purpose: show the tree structure
+                tree.toDotPDFFile("check.pdf");
 
                 // Test get.
                 for (int i = 0; i < keys.size(); ++i) {

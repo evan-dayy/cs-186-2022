@@ -164,7 +164,6 @@ class InnerNode extends BPlusNode {
             return Optional.empty();
         }
         // case it return the new key and also the current keys have already full
-
         List<DataBox> leftKeys = node.getKeys().subList(0, metadata.getOrder());
         List<Long> leftChildren= node.getChildren().subList(0, metadata.getOrder() + 1);
         // for the newly created page
@@ -187,7 +186,32 @@ class InnerNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
         // TODO(proj2): implement
-        return Optional.empty();
+        Optional<Pair<DataBox, Long>> feed_back = Optional.empty();
+        while (data.hasNext()) {
+            feed_back = bulk_recursive(this, data, fillFactor);
+            if (feed_back.equals(Optional.empty())) continue;
+            allocate(feed_back.get(), this);
+        }
+        return feed_back;
+    }
+
+    private Optional<Pair<DataBox, Long>> bulk_recursive(InnerNode node,
+                                                         Iterator<Pair<DataBox, RecordId>> data,
+                                                         float fillFactor) {
+        long child_page_num = node.getChildren().get(node.getChildren().size() - 1);
+        Page p = bufferManager.fetchPage(treeContext, child_page_num);
+        Buffer buf = p.getBuffer();
+        p.unpin();
+        if (buf.get() == 1) {
+            LeafNode nxt = LeafNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+            return nxt.bulkLoad(data, fillFactor);
+        }
+        InnerNode nxt = InnerNode.fromBytes(metadata, bufferManager, treeContext, child_page_num);
+        Optional<Pair<DataBox, Long>> feedback = bulk_recursive(nxt, data, fillFactor);
+        // case do not need to do anything
+        if (feedback.equals(Optional.empty())) return Optional.empty();
+        // allocation process
+        return allocate(feedback.get(), nxt);
     }
 
     // See BPlusNode.remove.

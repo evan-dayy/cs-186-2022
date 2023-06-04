@@ -306,8 +306,28 @@ public class BPlusTree {
         // Note: You should NOT update the root variable directly.
         // Use the provided updateRoot() helper method to change
         // the tree's root if the old root splits.
-
-        return;
+        // check the tree is empty
+        try {
+            int n = ((LeafNode) (this.root)).getKeys().size();
+            if (n > 0) throw new BPlusTreeException("Not empty tree");
+        } catch(Exception e) {
+            throw new BPlusTreeException("Not empty tree");
+        }
+        // if the tree is empty
+        // we assume the data is sorted, no explict check over here
+        Optional<Pair<DataBox, Long>> feedback;
+        while (data.hasNext()) {
+            feedback = root.bulkLoad(data, fillFactor);
+            if (!feedback.equals(Optional.empty())) {
+                List<DataBox> keys = new ArrayList<>();
+                List<Long> children = new ArrayList<>();
+                children.add(metadata.getRootPageNum());
+                keys.add(feedback.get().getFirst());
+                children.add(feedback.get().getSecond());
+                BPlusNode newRoot = new InnerNode(metadata, bufferManager, keys, children, lockContext);
+                updateRoot(newRoot);
+            }
+        }
     }
 
     /**

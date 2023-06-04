@@ -139,6 +139,8 @@ public class TestBPlusTree {
         }
 
         tree.bulkLoad(data.iterator(), fillFactor);
+        tree.toDotPDFFile("check.pdf");
+
         //      (    4        7         10        _   )
         //       /       |         |         \
         // (1 2 3 _) (4 5 6 _) (7 8 9 _) (10 11 _ _)

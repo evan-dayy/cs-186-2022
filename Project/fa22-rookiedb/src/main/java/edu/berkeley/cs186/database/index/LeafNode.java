@@ -203,8 +203,44 @@ class LeafNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
         // TODO(proj2): implement
-
+        if (fillFactor > 1) throw new BPlusTreeException("Undefined behavior for >1 fill factor");
+        int limit = (int) Math.ceil(metadata.getOrder() * 2 * fillFactor);
+        int i = this.keys.size();
+        while (data.hasNext()) {
+            Pair<DataBox, RecordId> curr = data.next();
+            if (i == limit) return this.put(curr.getFirst(), curr.getSecond(), limit);
+            this.put(curr.getFirst(), curr.getSecond());
+            i++;
+        }
         return Optional.empty();
+    }
+
+    // overloading method for put
+    public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid, int limit) {
+        // TODO(proj2): implement
+        // case the duplication occurs
+        if (this.keys.contains(key)) throw new BPlusTreeException("Duplicated Key");
+        int idx = binarySearchKey(this.keys, key);
+        this.keys.add(idx, key);
+        this.rids.add(idx, rid);
+        // if the insertion does not cause the overflow, then return the optional empty
+        if (this.keys.size() <= limit) {
+            sync();
+            return Optional.empty();
+        }
+        // what if the case it is overflowed
+        List<DataBox> left_keys = this.keys.subList(0, limit);
+        List<DataBox> right_keys = this.keys.subList(limit, this.keys.size());
+        List<RecordId> left_rids = this.rids.subList(0, limit);
+        List<RecordId> right_rids = this.rids.subList(limit, this.rids.size());
+        this.keys = left_keys;
+        this.rids = left_rids;
+        Page page = bufferManager.fetchNewPage(this.treeContext, this.metadata.getPartNum());
+        new LeafNode(this.metadata, this.bufferManager, page, right_keys,
+                right_rids, this.rightSibling, this.treeContext);
+        this.rightSibling = Optional.of(page.getPageNum());
+        sync();
+        return Optional.of(new Pair<DataBox, Long>(right_keys.get(0), page.getPageNum()));
     }
 
     // See BPlusNode.remove.

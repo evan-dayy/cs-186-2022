@@ -11,7 +11,6 @@ import edu.berkeley.cs186.database.io.DiskSpaceManager;
 import edu.berkeley.cs186.database.memory.BufferManager;
 import edu.berkeley.cs186.database.table.RecordId;
 
-import javax.xml.crypto.Data;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -476,7 +475,8 @@ public class BPlusTree {
         @Override
         public boolean hasNext() {
             // TODO(proj2): implement
-            return !this.leftMostLeaf.equals(Optional.empty());
+            if (this.leftMostLeaf.equals(Optional.empty())) return false;
+            return this.leftMostLeaf.get().getKeys().size() > 0;
         }
 
         @Override

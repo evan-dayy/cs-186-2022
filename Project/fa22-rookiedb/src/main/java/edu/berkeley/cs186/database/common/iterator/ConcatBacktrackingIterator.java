@@ -50,6 +50,7 @@ public class ConcatBacktrackingIterator<T> implements BacktrackingIterator<T> {
      */
     private void moveNextToNonEmpty() {
         while (!this.nextItemIterator.hasNext()) {
+            // still have the next iterator index
             if (nextIndex + 1 < iterables.size()) {
                 nextIndex++;
                 this.nextItemIterator = iterables.get(nextIndex).iterator();

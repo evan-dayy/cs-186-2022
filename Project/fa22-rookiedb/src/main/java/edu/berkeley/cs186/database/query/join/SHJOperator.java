@@ -128,13 +128,11 @@ public class SHJOperator extends JoinOperator {
     private void run(Iterable<Record> leftRecords, Iterable<Record> rightRecords, int pass) {
         assert pass >= 1;
         if (pass > 5) throw new IllegalStateException("Reached the max number of passes");
-
         // Create empty partitions
         Partition[] partitions = createPartitions();
 
         // Partition records into left and right
         this.partition(partitions, leftRecords);
-
         for (int i = 0; i < partitions.length; i++) {
             buildAndProbe(partitions[i], rightRecords);
         }

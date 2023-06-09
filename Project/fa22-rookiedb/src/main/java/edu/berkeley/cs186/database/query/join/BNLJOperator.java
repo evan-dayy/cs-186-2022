@@ -66,11 +66,10 @@ public class BNLJOperator extends JoinOperator {
             super();
             this.leftSourceIterator = getLeftSource().iterator();
             this.fetchNextLeftBlock();
-
             this.rightSourceIterator = getRightSource().backtrackingIterator();
+            // marking the start position
             this.rightSourceIterator.markNext();
             this.fetchNextRightPage();
-
             this.nextRecord = null;
         }
 
@@ -88,6 +87,15 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextLeftBlock() {
             // TODO(proj3_part1): implement
+            // need to check whether there are still has pages
+            if (!leftSourceIterator.hasNext()) {
+                leftRecord = null;
+                return;
+            }
+            // set up the next block
+            this.leftBlockIterator = getBlockIterator(leftSourceIterator, getLeftSource().getSchema(), numBuffers - 2);
+            this.leftBlockIterator.markNext();
+            this.leftRecord = this.leftBlockIterator.next();
         }
 
         /**
@@ -103,6 +111,10 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextRightPage() {
             // TODO(proj3_part1): implement
+            // need to check whether there are still has pages
+            if (!rightSourceIterator.hasNext()) return;
+            this.rightPageIterator = getBlockIterator(rightSourceIterator, getRightSource().getSchema(), 1);
+            this.rightPageIterator.markNext();
         }
 
         /**
@@ -115,7 +127,46 @@ public class BNLJOperator extends JoinOperator {
          */
         private Record fetchNextRecord() {
             // TODO(proj3_part1): implement
-            return null;
+            if (leftRecord == null) return null;
+            // go through every element in a block and a page
+            Record temp = fetchNextRecordWithinABlockAndPage(leftBlockIterator, rightPageIterator);
+            // if temp has a value, then there is a match
+            if (temp != null) return temp;
+            // else there is no match for current block page
+            // there are two options, either moving to the next page if there is a next right page
+            if (rightSourceIterator.hasNext()) {
+                fetchNextRightPage();
+                leftBlockIterator.reset();
+                // reset the location of leftRecord
+                this.leftRecord = this.leftBlockIterator.next();
+                return fetchNextRecord();
+            }
+            // other option is there we are reaching the last right page,
+            rightSourceIterator.reset();
+            fetchNextRightPage();
+            fetchNextLeftBlock();
+            return fetchNextRecord();
+        }
+
+        private Record fetchNextRecordWithinABlockAndPage(BacktrackingIterator<Record> leftBlock,
+                                                          BacktrackingIterator<Record> rightPage) {
+            while(true) {
+                if (rightPage.hasNext()) {
+                    // there's a next right record, join it if there's a match
+                    Record rightRecord = rightPage.next();
+                    if (compare(leftRecord, rightRecord) == 0) {
+                        return leftRecord.concat(rightRecord);
+                    }
+                } else if (leftBlock.hasNext()){
+                    // there's no more right records but there's still left
+                    // records. Advance left and reset right
+                    this.leftRecord = leftBlock.next();
+                    rightPage.reset();
+                } else {
+                    // if you're here then there are no more records to fetch
+                    return null;
+                }
+            }
         }
 
         /**

@@ -492,4 +492,19 @@ public class TestBPlusTree {
         assertEquals(3, InnerNode.maxOrder(pageSizeInBytes, keySchema));
         assertEquals(3, BPlusTree.maxOrder(pageSizeInBytes, keySchema));
     }
+
+    @Test
+    public void testDeleteEverything() {
+        BPlusTree tree = getBPlusTree(Type.intType(), 2);
+        for (int i = 0; i < 100; i++) {
+            tree.put(new IntDataBox(i), new RecordId(i, (short) i));
+        }
+
+        for (int i = 0; i < 100; i++) {
+            tree.remove(new IntDataBox(i));
+        }
+
+        Iterator<RecordId> iter = tree.scanAll();
+        assertFalse(iter.hasNext());
+    }
 }

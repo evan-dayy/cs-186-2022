@@ -26,6 +26,7 @@ public class Run implements Iterable<Record> {
         this.schema = schema;
     }
 
+
     /**
      * Adds a record to this run.
      * @param record the record to add

@@ -176,6 +176,8 @@ public class GHJOperator extends JoinOperator {
             if (leftPartitions[i].getNumPages() > this.numBuffers - 2
                 && rightPartitions[i].getNumPages() > this.numBuffers - 2) {
                 // recursive hashing
+                int temp1 = leftPartitions[i].getNumPages();
+                int temp2 = rightPartitions[i].getNumPages();
                 this.run(leftPartitions[i], rightPartitions[i], pass + 1);
             } else {
                 buildAndProbe(leftPartitions[i], rightPartitions[i]);
@@ -248,9 +250,9 @@ public class GHJOperator extends JoinOperator {
         // SHJ breaks when trying to join them but not GHJ
         // one case SHJ will fail is that the left partition is two large, which
         // suggesting that it cannot fit into B - 2 buffer pages
-        for (int i = 0; i < 100; i++) {
-            leftRecords.add(createRecord(i % 8));
-            rightRecords.add(createRecord(i % 8));
+        for (int i = 0; i < 100 ; i++) {
+            leftRecords.add(createRecord(i % 5));
+            rightRecords.add(createRecord(i));
         }
         return new Pair<>(leftRecords, rightRecords);
     }
@@ -273,8 +275,8 @@ public class GHJOperator extends JoinOperator {
         ArrayList<Record> rightRecords = new ArrayList<>();
         // TODO(proj3_part1): populate leftRecords and rightRecords such that GHJ breaks
         for (int i = 0; i < 400; i++) {
-            leftRecords.add(createRecord(i % 10));
-            rightRecords.add(createRecord(i % 10));
+            leftRecords.add(createRecord(1));
+            rightRecords.add(createRecord(1));
         }
         return new Pair<>(leftRecords, rightRecords);
     }

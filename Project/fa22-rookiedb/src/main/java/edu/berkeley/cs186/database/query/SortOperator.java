@@ -88,7 +88,7 @@ public class SortOperator extends QueryOperator {
     public Run sortRun(Iterator<Record> records) {
         // TODO(proj3_part1): implement
         List<Record> sortedRecord = new ArrayList<>();
-        if (records.hasNext()) sortedRecord.add(records.next());
+        while (records.hasNext()) sortedRecord.add(records.next());
         sortedRecord.sort(this.comparator);
         Run res = new Run(this.transaction, this.computeSchema());
         res.addAll(sortedRecord);
@@ -161,9 +161,7 @@ public class SortOperator extends QueryOperator {
         // TODO(proj3_part1): implement
         List<Run> res = new ArrayList<>();
         for(int i = 0; i < runs.size(); i+=(this.numBuffers - 1)) {
-            res.add(mergeSortedRuns(runs.subList(i,
-                    Math.min((i + this.numBuffers - 1), runs.size()))
-            ));
+            res.add(mergeSortedRuns(runs.subList(i, Math.min((i + this.numBuffers - 1), runs.size()))));
         }
         return res;
     }
@@ -184,9 +182,11 @@ public class SortOperator extends QueryOperator {
         while (sourceIterator.hasNext()) {
             BacktrackingIterator<Record> curr = getBlockIterator(sourceIterator,
                     this.computeSchema(),
-                    numBuffers);
+                    this.numBuffers);
             runs.add(sortRun(curr));
         }
+        // final run, direct return, did not cost any IO cost
+        if (runs.size() == 1) return runs.get(0);
         return mergeSortedRuns(runs);
     }
 

@@ -2,16 +2,14 @@ package edu.berkeley.cs186.database.query.join;
 
 import edu.berkeley.cs186.database.TransactionContext;
 import edu.berkeley.cs186.database.common.iterator.BacktrackingIterator;
+import edu.berkeley.cs186.database.databox.DataBox;
 import edu.berkeley.cs186.database.query.JoinOperator;
 import edu.berkeley.cs186.database.query.MaterializeOperator;
 import edu.berkeley.cs186.database.query.QueryOperator;
 import edu.berkeley.cs186.database.query.SortOperator;
 import edu.berkeley.cs186.database.table.Record;
 
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 public class SortMergeOperator extends JoinOperator {
     public SortMergeOperator(QueryOperator leftSource,
@@ -103,14 +101,59 @@ public class SortMergeOperator extends JoinOperator {
             leftIterator = getLeftSource().iterator();
             rightIterator = getRightSource().backtrackingIterator();
             rightIterator.markNext();
-
             if (leftIterator.hasNext() && rightIterator.hasNext()) {
                 leftRecord = leftIterator.next();
                 rightRecord = rightIterator.next();
             }
-
             this.marked = false;
         }
+
+        /**
+         * Returns the next record that should be yielded from this join,
+         * or null if there are no more records to join.
+         */
+        private Record fetchNextRecord() {
+            while (leftRecord != null) {
+                if (rightRecord != null && !marked) {
+                    // advance the lesser until get to a match
+                    while (compare(leftRecord, rightRecord) < 0) {
+                        if (leftIterator.hasNext()) {
+                            this.leftRecord = leftIterator.next();
+                        } else {
+                            this.leftRecord = null;
+                            return null;
+                        }
+                    }
+                    while (compare(leftRecord, rightRecord) > 0) {
+                        if (rightIterator.hasNext()) {
+                            this.rightRecord = rightIterator.next();
+                        } else {
+                            this.rightRecord = null;
+                            break;
+                        }
+                    }
+                    // mark beginning of matching right records
+                    this.rightIterator.markPrev();
+                    this.marked = true;
+                }
+
+                if (rightRecord != null && compare(leftRecord, rightRecord) == 0) {
+                    // there's a next right record, join it if there's a match
+                    Record result = this.leftRecord.concat(rightRecord);
+                    this.rightRecord = rightIterator.hasNext() ? rightIterator.next() : null;
+                    return result;
+                } else {
+                    // there's no more matching right records, reset right and advance left
+                    this.leftRecord = leftIterator.hasNext() ? leftIterator.next() : null;
+                    this.rightIterator.reset();
+                    this.marked = false;
+                    this.rightRecord = this.rightIterator.next();
+                }
+            }
+            // The left source was empty, nothing to fetch
+            return null;
+        }
+
 
         /**
          * @return true if this iterator has another record to yield, otherwise
@@ -118,6 +161,7 @@ public class SortMergeOperator extends JoinOperator {
          */
         @Override
         public boolean hasNext() {
+
             if (this.nextRecord == null) this.nextRecord = fetchNextRecord();
             return this.nextRecord != null;
         }
@@ -132,15 +176,6 @@ public class SortMergeOperator extends JoinOperator {
             Record nextRecord = this.nextRecord;
             this.nextRecord = null;
             return nextRecord;
-        }
-
-        /**
-         * Returns the next record that should be yielded from this join,
-         * or null if there are no more records to join.
-         */
-        private Record fetchNextRecord() {
-            // TODO(proj3_part1): implement
-            return null;
         }
 
         @Override

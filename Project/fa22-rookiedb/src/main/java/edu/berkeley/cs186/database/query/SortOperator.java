@@ -185,9 +185,12 @@ public class SortOperator extends QueryOperator {
                     this.numBuffers);
             runs.add(sortRun(curr));
         }
+        while (runs.size() > 1) {
+            runs = mergePass(runs);
+        }
         // final run, direct return, did not cost any IO cost
         if (runs.size() == 1) return runs.get(0);
-        return mergeSortedRuns(runs);
+        return makeRun();
     }
 
     /**

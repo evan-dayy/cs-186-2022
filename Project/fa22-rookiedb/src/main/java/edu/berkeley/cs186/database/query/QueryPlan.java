@@ -659,6 +659,25 @@ public class QueryPlan {
         //      calculate the cheapest join with the new table (the one you
         //      fetched an operator for from pass1Map) and the previously joined
         //      tables. Then, update the result map if needed.
+        for (Set<String> tables : prevMap.keySet()) {
+            QueryOperator prevOp = prevMap.get(tables);
+            for (JoinPredicate predicate : this.joinPredicates) {
+                Set<String> resultTables = new HashSet<>(tables);
+                String leftTable = predicate.leftTable, rightTable = predicate.rightTable,
+                        leftColumn = predicate.leftColumn, rightColumn = predicate.rightColumn;
+                if (tables.contains(leftTable) && !tables.contains(rightTable)) {
+                    QueryOperator singleOp = pass1Map.get(Collections.singleton(rightTable));
+                    resultTables.add(rightTable);
+                    QueryOperator minOp = minCostJoinType(prevOp, singleOp, leftColumn, rightColumn);
+                    result.put(resultTables, minOp);
+                } else if (tables.contains(rightTable) && !tables.contains(leftTable)) {
+                    QueryOperator singleOp = pass1Map.get(Collections.singleton(leftTable));
+                    resultTables.add(leftTable);
+                    QueryOperator minOp = minCostJoinType(prevOp, singleOp, rightColumn, leftColumn);
+                    result.put(resultTables, minOp);
+                }
+            }
+        }
         return result;
     }
 
@@ -708,7 +727,16 @@ public class QueryPlan {
         // Set the final operator to the lowest cost operator from the last
         // pass, add group by, project, sort and limit operators, and return an
         // iterator over the final operator.
-        return this.executeNaive(); // TODO(proj3_part2): Replace this!
+        Map<Set<String>, QueryOperator> pass1Map = new HashMap<>();
+        for (String name : tableNames) pass1Map.put(Collections.singleton(name), minCostSingleAccess(name));
+        Map<Set<String>, QueryOperator> finalMap = new HashMap<>(pass1Map);
+        for (int i = 1; i < tableNames.size(); ++i) finalMap = minCostJoins(finalMap, pass1Map);
+        this.finalOperator = minCostOperator(finalMap);
+        addGroupBy();
+        addProject();
+        addSort();
+        addLimit();
+        return this.finalOperator.iterator();
     }
 
     // EXECUTE NAIVE ///////////////////////////////////////////////////////////

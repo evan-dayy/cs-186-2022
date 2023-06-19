@@ -1,5 +1,8 @@
 package edu.berkeley.cs186.database.concurrency;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+
 /**
  * Represents a lock held by a transaction on a resource.
  */

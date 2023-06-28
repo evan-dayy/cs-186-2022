@@ -82,20 +82,9 @@ public class LockManager {
                 }
             }
             locks.add(newLock);
-            transactionLocks.putIfAbsent(newLock.transactionNum, new ArrayList<>());
-            transactionLocks.get(newLock.transactionNum).add(newLock);
+            transactionLocks.computeIfAbsent(newLock.transactionNum, (x) -> new ArrayList<>()).add(newLock);
         }
 
-        /**
-         * Releases the lock `lock` and processes the queue. Assumes that the
-         * lock has been granted before.
-         */
-        public void releaseLock(Lock lock) {
-            // TODO(proj4_part1): implement
-            locks.remove(lock);
-            transactionLocks.get(lock.transactionNum).remove(lock);
-            processQueue();
-        }
 
         /**
          * Acquire the lock in the request `request` and add the request to the
@@ -113,6 +102,18 @@ public class LockManager {
                 return true;
             }
         }
+
+        /**
+         * Releases the lock `lock` and processes the queue. Assumes that the
+         * lock has been granted before.
+         */
+        public void releaseLock(Lock lock) {
+            // TODO(proj4_part1): implement
+            locks.remove(lock);
+            transactionLocks.get(lock.transactionNum).remove(lock);
+            processQueue();
+        }
+
 
         /**
          * Adds `request` to the front of the queue if addFront is true, or to

@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * LockContext wraps around LockManager to provide the hierarchical structure
- * of multigranularity locking. Calls to acquire/release/etc. locks should
+ * of multi-granularity locking. Calls to acquire/release/etc. locks should
  * be mostly done through a LockContext, which provides access to locking
  * methods at a certain point in the hierarchy (database, table X, etc.)
  */
@@ -96,8 +96,17 @@ public class LockContext {
     public void acquire(TransactionContext transaction, LockType lockType)
             throws InvalidLockException, DuplicateLockRequestException {
         // TODO(proj4_part2): implement
+        if (readonly) throw new UnsupportedOperationException();
 
-        return;
+        if (!multigranularityCheck(transaction, lockType)) {
+            throw new InvalidLockException("the request is invalid");
+        }
+
+        lockman.acquire(transaction, name, lockType);
+        if (parent != null) {
+            parent.numChildLocks.put(transaction.getTransNum(),
+                    parent.getNumChildren(transaction) + 1);
+        }
     }
 
     /**
@@ -114,8 +123,17 @@ public class LockContext {
     public void release(TransactionContext transaction)
             throws NoLockHeldException, InvalidLockException {
         // TODO(proj4_part2): implement
+        if (readonly) throw new UnsupportedOperationException();
 
-        return;
+        if (getNumChildren(transaction) != 0) {
+            throw new InvalidLockException("the lock cannot be released");
+        }
+
+        lockman.release(transaction, name);
+        if (parent != null) {
+            parent.numChildLocks.put(transaction.getTransNum(),
+                    parent.getNumChildren(transaction) - 1);
+        }
     }
 
     /**
@@ -140,8 +158,28 @@ public class LockContext {
     public void promote(TransactionContext transaction, LockType newLockType)
             throws DuplicateLockRequestException, NoLockHeldException, InvalidLockException {
         // TODO(proj4_part2): implement
+        if (readonly) throw new UnsupportedOperationException();
 
-        return;
+        LockType lockType = lockman.getLockType(transaction, name);
+        if ((!LockType.substitutable(newLockType, lockType) || newLockType == lockType) &&
+                !(newLockType == LockType.SIX && (lockType == LockType.IS || lockType == LockType.IX))) {
+            throw new InvalidLockException("the requested lock type is not a promotion");
+        } else if (!multigranularityCheck(transaction, newLockType)) {
+            throw new InvalidLockException("the request is invalid");
+        } else if (hasSIXAncestor(transaction) && newLockType == LockType.SIX) {
+            throw new InvalidLockException("cannot promote to SIX with a SIX ancestor");
+        }
+
+        if (newLockType == LockType.SIX) {
+            List<ResourceName> releaseNames = sisDescendants(transaction);
+            if (lockType != LockType.NL) {
+                releaseNames.add(name);
+            }
+            lockman.acquireAndRelease(transaction, name, newLockType, releaseNames);
+            clearNumChildLocks(transaction, releaseNames, name);
+        } else {
+            lockman.promote(transaction, name, newLockType);
+        }
     }
 
     /**
@@ -179,8 +217,15 @@ public class LockContext {
      */
     public void escalate(TransactionContext transaction) throws NoLockHeldException {
         // TODO(proj4_part2): implement
+        if (readonly) throw new UnsupportedOperationException();
 
-        return;
+        LockType newLockType = escalateType(transaction);
+        List<ResourceName> releaseNames = descendantWithLocks(transaction);
+        releaseNames.add(name);
+        if (lockman.getLockType(transaction, name) != newLockType) {
+            lockman.acquireAndRelease(transaction, name, newLockType, releaseNames);
+            clearNumChildLocks(transaction, releaseNames, name);
+        }
     }
 
     /**
@@ -190,7 +235,9 @@ public class LockContext {
     public LockType getExplicitLockType(TransactionContext transaction) {
         if (transaction == null) return LockType.NL;
         // TODO(proj4_part2): implement
-        return LockType.NL;
+
+        LockType lockType = lockman.getLockType(transaction, name);
+        return lockType.getExplicit();
     }
 
     /**
@@ -202,7 +249,15 @@ public class LockContext {
     public LockType getEffectiveLockType(TransactionContext transaction) {
         if (transaction == null) return LockType.NL;
         // TODO(proj4_part2): implement
-        return LockType.NL;
+        LockType lockType = getExplicitLockType(transaction);
+        List<Lock> locks = lockman.getLocks(transaction);
+        for (Lock lock : locks) {
+            if (name.isDescendantOf(lock.name) &&
+                    LockType.substitutable(lock.lockType.getExplicit(), lockType)) {
+                lockType = lock.lockType.getExplicit();
+            }
+        }
+        return lockType;
     }
 
     /**
@@ -213,6 +268,12 @@ public class LockContext {
      */
     private boolean hasSIXAncestor(TransactionContext transaction) {
         // TODO(proj4_part2): implement
+        List<Lock> locks = lockman.getLocks(transaction);
+        for (Lock lock : locks) {
+            if (name.isDescendantOf(lock.name) && lock.lockType == LockType.SIX) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -225,7 +286,15 @@ public class LockContext {
      */
     private List<ResourceName> sisDescendants(TransactionContext transaction) {
         // TODO(proj4_part2): implement
-        return new ArrayList<>();
+        List<Lock> locks = lockman.getLocks(transaction);
+        List<ResourceName> names = new ArrayList<>();
+        for (Lock lock : locks) {
+            if (lock.name.isDescendantOf(name) &&
+                    (lock.lockType == LockType.S || lock.lockType == LockType.IS)) {
+                names.add(lock.name);
+            }
+        }
+        return names;
     }
 
     /**
@@ -276,6 +345,71 @@ public class LockContext {
     @Override
     public String toString() {
         return "LockContext(" + name.toString() + ")";
+    }
+
+    /**
+     * Helper method to see if the new lock type satisfies the multigranularity
+     * constraints for the given transaction.
+     * @param transaction the given transaction
+     * @param newLockType the new lock type to be assigned
+     * @return true if multigranularity check passes, false if not
+     */
+    private boolean multigranularityCheck(TransactionContext transaction, LockType newLockType) {
+        if (parent != null) {
+            LockType parentLockType = lockman.getLockType(transaction, parent.getResourceName());
+            return LockType.canBeParentLock(parentLockType, newLockType);
+        } else {
+            return true;
+        }
+    }
+
+    /**
+     * Helper method to determine the least permissive lock type for escalation
+     * for the given transaction.
+     * @param transaction the given transaction
+     * @return the least permissive lock type for escalation
+     */
+    private LockType escalateType(TransactionContext transaction) {
+        List<Lock> locks = lockman.getLocks(transaction);
+        for (Lock lock : locks) {
+            if ((lock.name.isDescendantOf(name) || lock.name == name) &&
+                    (lock.lockType != LockType.IS && lock.lockType != LockType.S)) {
+                return LockType.X;
+            }
+        }
+        return LockType.S;
+    }
+
+    /**
+     * Helper method to get a list of resourceNames of all locks that are
+     * descendants of current context for the given transaction.
+     * @param transaction the given transaction
+     * @return a list of ResourceNames of descendants
+     */
+    private List<ResourceName> descendantWithLocks(TransactionContext transaction) {
+        List<Lock> locks = lockman.getLocks(transaction);
+        List<ResourceName> names = new ArrayList<>();
+        for (Lock lock : locks) {
+            if (lock.name.isDescendantOf(name)) {
+                names.add(lock.name);
+            }
+        }
+        return names;
+    }
+
+    /**
+     * Helper method to clear numChildLocks in the contexts corresponding to
+     * a list of resourceNames for the given transaction.
+     * @param transaction the given transaction
+     * @param names a list of resourceNames to release
+     */
+    private void clearNumChildLocks(TransactionContext transaction, List<ResourceName> names, ResourceName except) {
+        for (ResourceName name : names) {
+            if (name != except && name.parent() != null) {
+                LockContext context = fromResourceName(lockman, name.parent());
+                context.numChildLocks.put(transaction.getTransNum(), context.getNumChildren(transaction) - 1);
+            }
+        }
     }
 }
 

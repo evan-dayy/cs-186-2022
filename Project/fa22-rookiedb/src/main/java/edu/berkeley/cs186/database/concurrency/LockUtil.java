@@ -39,11 +39,53 @@ public class LockUtil {
         // You may find these variables useful
         LockContext parentContext = lockContext.parentContext();
         LockType effectiveLockType = lockContext.getEffectiveLockType(transaction);
-        LockType explicitLockType = lockContext.getExplicitLockType(transaction);
+        LockType currentLockType = lockContext.lockman.getLockType(transaction, lockContext.name);
 
         // TODO(proj4_part2): implement
-        return;
+        if (LockType.substitutable(effectiveLockType, requestType)) {
+            // The current lock type can effectively substitute the requested type
+            return;
+        } else if (currentLockType == LockType.IX && requestType == LockType.S) {
+            // The current lock type is IX and the requested lock is S
+            requestType = LockType.SIX;
+            ensureSufficientIntent(parentContext, requestType);
+            lockContext.promote(transaction, requestType);
+        } else if (currentLockType.isIntent()) {
+            // The current lock type is an intent lock
+            ensureSufficientIntent(parentContext, requestType);
+            lockContext.escalate(transaction);
+            return;
+        } else {
+            ensureSufficientIntent(parentContext, requestType);
+            if (currentLockType == LockType.NL) {
+                lockContext.acquire(transaction, requestType);
+            } else {
+                lockContext.promote(transaction, requestType);
+            }
+        }
     }
 
     // TODO(proj4_part2) add any helper methods you want
+    public static void ensureSufficientIntent(LockContext lockContext, LockType requestType) {
+        // Do nothing if the transaction or lockContext is null
+        TransactionContext transaction = TransactionContext.getTransaction();
+        if (transaction == null || lockContext == null) return;
+
+        LockContext parentContext = lockContext.parentContext();
+        LockType currentLockType = lockContext.lockman.getLockType(transaction, lockContext.name);
+
+        LockType requestIntent = LockType.parentLock(requestType);
+        if (!LockType.canBeParentLock(currentLockType, requestType)) {
+            if (currentLockType == LockType.S && requestIntent == LockType.IX) {
+                requestIntent = LockType.SIX;
+            }
+
+            ensureSufficientIntent(parentContext, requestIntent);
+            if (currentLockType == LockType.NL) {
+                lockContext.acquire(transaction, requestIntent);
+            } else {
+                lockContext.promote(transaction, requestIntent);
+            }
+        }
+    }
 }

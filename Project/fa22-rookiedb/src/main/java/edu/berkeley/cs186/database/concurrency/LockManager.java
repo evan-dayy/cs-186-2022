@@ -155,6 +155,7 @@ public class LockManager {
                 if (checkCompatible(request.lock.lockType, request.lock.transactionNum)) {
                     processRequest(request);
                     waitingQueue.removeFirst();
+                    // unblock the current transaction
                     request.transaction.unblock();
                 } else {
                     break;
@@ -343,15 +344,6 @@ public class LockManager {
         }
     }
 
-    /**
-     * Return the type of lock `transaction` has on `name` or NL if no lock is
-     * held.
-     */
-    public synchronized LockType getLockType(TransactionContext transaction, ResourceName name) {
-        // TODO(proj4_part1): implement
-        ResourceEntry resourceEntry = getResourceEntry(name);
-        return resourceEntry.getTransactionLockType(transaction.getTransNum());
-    }
 
     /**
      * Returns the list of locks held on `name`, in order of acquisition.
@@ -366,6 +358,16 @@ public class LockManager {
     public synchronized List<Lock> getLocks(TransactionContext transaction) {
         return new ArrayList<>(transactionLocks.getOrDefault(transaction.getTransNum(),
                 Collections.emptyList()));
+    }
+
+    /**
+     * Return the type of lock `transaction` has on `name` or NL if no lock is
+     * held.
+     */
+    public synchronized LockType getLockType(TransactionContext transaction, ResourceName name) {
+        // TODO(proj4_part1): implement
+        ResourceEntry resourceEntry = getResourceEntry(name);
+        return resourceEntry.getTransactionLockType(transaction.getTransNum());
     }
 
     /**

@@ -26,7 +26,7 @@ import java.net.Socket;
  * run `python client.py` in the root of the project directory (needs Python 3)
  *
  * Alternatively, use a utility like `netcat` or `nc` to open a connection, i.e.:
- * - `netcat l      ocalhost 18600`
+ * - `netcat localhost 18600`
  * - `nc localhost 18600` (depending on how netcat is installed)
  * - `ncat localhost 18600` (For window users. May need to download first)
  */

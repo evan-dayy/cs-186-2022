@@ -121,7 +121,6 @@ public class ARIESRecoveryManager implements RecoveryManager {
         // TODO(proj5): implement
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
-
         long prevLSN = transactionEntry.lastLSN;
         LogRecord record = new AbortTransactionLogRecord(transNum, prevLSN);
         long LSN = logManager.appendToLog(record);
@@ -157,6 +156,7 @@ public class ARIESRecoveryManager implements RecoveryManager {
         // Update lastLSN
         transactionEntry.lastLSN = LSN;
         transactionEntry.transaction.setStatus(Transaction.Status.COMPLETE);
+        // Remove the transaction table
         transactionTable.remove(transNum);
         return LSN;
     }
@@ -249,7 +249,6 @@ public class ARIESRecoveryManager implements RecoveryManager {
         // TODO(proj5): implement
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
-
         long prevLSN = transactionEntry.lastLSN;
         LogRecord record = new UpdatePageLogRecord(transNum, pageNum, prevLSN, pageOffset, before, after);
         long LSN = logManager.appendToLog(record);
@@ -575,7 +574,7 @@ public class ARIESRecoveryManager implements RecoveryManager {
      *   checkpoint. For example, running -> aborting is a possible transition,
      *   but aborting -> running is not.
      *
-     * After all records in the log are processed, for each ttable entry:
+     * After all records in the log are processed, for each table entry:
      *  - if COMMITTING: clean up the transaction, change status to COMPLETE,
      *    remove from the ttable, and append an end record
      *  - if RUNNING: change status to RECOVERY_ABORTING, and append an abort
@@ -757,8 +756,7 @@ public class ARIESRecoveryManager implements RecoveryManager {
      *
      * @param record log record being redone
      */
-    void redoDirtyPage(LogRecord record)
-    {
+    void redoDirtyPage(LogRecord record) {
         long pageNum = record.getPageNum().get();
         if (dirtyPageTable.containsKey(pageNum) &&
                 record.LSN >= dirtyPageTable.get(pageNum)) {

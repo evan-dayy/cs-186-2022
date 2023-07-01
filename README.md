@@ -1,5 +1,5 @@
 # cs-186-2022
-Self Learning Version Based on Fall-2022 + Addtional Contents on Spring 2023
+Version Based on Fall-2022 + Addtional Contents on Spring 2023
 Topics Including: SQL Langaue, 
 1. Internal Structure of RDBMS (Disk Manager, Buffer Manager, File and Index Manger, Query Optimization, SQL Cliend)
 2. B+ tree Implementation

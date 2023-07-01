@@ -3,7 +3,7 @@ Version Based on Fall-2022 + Addtional Contents on Spring 2023
 
 ![The official unofficial mascot of the class projects](Project/fa22-rookiedb/images/derpydb-small.jpg)
 
-Topics Including: SQL Langaue, 
+**Topics Including:**
 
 1. Internal Structure of RDBMS (Disk Manager, Buffer Manager, File and Index Manger, Query Optimization, SQL Cliend)
 2. B+ tree Implementation

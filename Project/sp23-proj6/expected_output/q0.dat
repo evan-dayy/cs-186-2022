@@ -1,0 +1,10 @@
+{ "min_rating" : 2, "max_rating" : 5, "title" : "Jurassic Park", "num_ratings" : 48 }
+{ "min_rating" : 1, "max_rating" : 5, "title" : "Forrest Gump", "num_ratings" : 47 }
+{ "min_rating" : 3, "max_rating" : 5, "title" : "Dances with Wolves", "num_ratings" : 45 }
+{ "min_rating" : 3, "max_rating" : 5, "title" : "The Fugitive", "num_ratings" : 44 }
+{ "min_rating" : 2, "max_rating" : 5, "title" : "Batman", "num_ratings" : 42 }
+{ "min_rating" : 1, "max_rating" : 5, "title" : "Pulp Fiction", "num_ratings" : 42 }
+{ "min_rating" : 2, "max_rating" : 5, "title" : "Apollo 13", "num_ratings" : 41 }
+{ "min_rating" : 2, "max_rating" : 5, "title" : "True Lies", "num_ratings" : 39 }
+{ "min_rating" : 1, "max_rating" : 5, "title" : "Terminator 2: Judgment Day", "num_ratings" : 37 }
+{ "min_rating" : 2, "max_rating" : 5, "title" : "Pretty Woman", "num_ratings" : 35 }

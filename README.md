@@ -4,7 +4,7 @@ Version Based on Fall-2022 + Addtional Contents on Spring 2023
 ![The official unofficial mascot of the class projects](Project/fa22-rookiedb/images/derpydb-small.jpg)
 
 Topics Including: SQL Langaue, 
-1. Internal Structure of RDBMS (Disk Manager, Buffer Manager, File and Index Manger, Query Optimization, SQL Cliend)
+** 1. Internal Structure of RDBMS (Disk Manager, Buffer Manager, File and Index Manger, Query Optimization, SQL Cliend)
 2. B+ tree Implementation
 3. Sort and Hash
 4. Join Algorithm (Naive Hash, Grace Hash, Sort-Merge)
@@ -16,3 +16,4 @@ Topics Including: SQL Langaue,
 10. Distributed Transaction and 2 Phase Commit
 11. NoSQL and MongoDB
 12. Spark and MapReduce
+**

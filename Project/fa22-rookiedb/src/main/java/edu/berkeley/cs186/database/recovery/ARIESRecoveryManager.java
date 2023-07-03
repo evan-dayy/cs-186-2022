@@ -576,7 +576,8 @@ public class ARIESRecoveryManager implements RecoveryManager {
     void restartAnalysis() {
         // Read master record to grab the start checking point
         LogRecord record = logManager.fetchLogRecord(0L);
-        assert (record != null && record.getType() == LogType.MASTER);
+        if (record == null) return; // for the command line normal running
+        assert (record.getType() == LogType.MASTER);
         MasterLogRecord masterRecord = (MasterLogRecord) record;
         long LSN = masterRecord.lastCheckpointLSN;
         // Set of transactions that have completed

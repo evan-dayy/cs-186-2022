@@ -14,6 +14,9 @@ import java.util.function.Function;
 
 /**
  * Implementation of ARIES.
+ * - ARIES Algorithm for recovery is a non-force & steal recovery Algorithm
+ * - indicating the buffer manager may steal dirty page
+ * - and the changes are flushed to disk after commit.
  */
 public class ARIESRecoveryManager implements RecoveryManager {
     // Disk space manager.
@@ -22,9 +25,9 @@ public class ARIESRecoveryManager implements RecoveryManager {
     BufferManager bufferManager;
 
     // Function to create a new transaction for recovery with a given
-    // transaction number.
+    // transaction number. One of Functional Programming
+    // call by using newTransaction.apply(tranNum) -> return transaction
     private Function<Long, Transaction> newTransaction;
-
     // Log manager
     LogManager logManager;
     // Dirty page table (page number -> recLSN).
@@ -71,9 +74,7 @@ public class ARIESRecoveryManager implements RecoveryManager {
 
     /**
      * Called when a new transaction is started.
-     *
      * The transaction should be added to the transaction table.
-     *
      * @param transaction new transaction
      */
     @Override

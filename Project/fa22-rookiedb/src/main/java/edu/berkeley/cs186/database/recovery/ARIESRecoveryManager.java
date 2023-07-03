@@ -32,7 +32,11 @@ public class ARIESRecoveryManager implements RecoveryManager {
     LogManager logManager;
     // Dirty page table (page number -> recLSN).
     Map<Long, Long> dirtyPageTable = new ConcurrentHashMap<>();
-    // Transaction table (transaction number -> entry).
+    /**
+     * two important properties:
+     *  1. the transaction itself
+     *  2. the last LSN (previous LSN Operating on this transaction)
+     */
     Map<Long, TransactionTableEntry> transactionTable = new ConcurrentHashMap<>();
     // true if redo phase of restart has terminated, false otherwise. Used
     // to prevent DPT entries from being flushed during restartRedo.
@@ -76,6 +80,7 @@ public class ARIESRecoveryManager implements RecoveryManager {
      * Called when a new transaction is started.
      * The transaction should be added to the transaction table.
      * @param transaction new transaction
+     * @synchronized only one thread can access at one time
      */
     @Override
     public synchronized void startTransaction(Transaction transaction) {
@@ -84,48 +89,44 @@ public class ARIESRecoveryManager implements RecoveryManager {
 
     /**
      * Called when a transaction is about to start committing.
-     *
      * A commit record should be appended, the log should be flushed,
      * and the transaction table and the transaction status should be updated.
-     *
      * @param transNum transaction being committed
      * @return LSN of the commit record
+     * @process append the record -> flush to the disk -> update transaction table (LSN)
      */
     @Override
     public long commit(long transNum) {
-        // TODO(proj5): implement
+        // step 1: append the record to the log
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
         long prevLSN = transactionEntry.lastLSN;
-        LogRecord record = new CommitTransactionLogRecord(transNum, prevLSN);
-        long LSN = logManager.appendToLog(record);
-        // Update lastLSN
+        long LSN = logManager.appendToLog(new CommitTransactionLogRecord(transNum, prevLSN));
+        // step 2: Flush everything up to the LSN
+        logManager.flushToLSN(LSN);
+        // step 3: update the current transaction table
         transactionEntry.lastLSN = LSN;
         transactionEntry.transaction.setStatus(Transaction.Status.COMMITTING);
-        // Flush log
-        logManager.flushToLSN(LSN);
         return LSN;
     }
 
     /**
      * Called when a transaction is set to be aborted.
-     *
      * An abort record should be appended, and the transaction table and
      * transaction status should be updated. Calling this function should not
      * perform any rollbacks.
-     *
      * @param transNum transaction being aborted
      * @return LSN of the abort record
+     * @process append the record -> update transaction table (LSN)
      */
     @Override
     public long abort(long transNum) {
-        // TODO(proj5): implement
+        // step 1: append the record to the log
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
         long prevLSN = transactionEntry.lastLSN;
-        LogRecord record = new AbortTransactionLogRecord(transNum, prevLSN);
-        long LSN = logManager.appendToLog(record);
-        // Update lastLSN
+        long LSN = logManager.appendToLog(new AbortTransactionLogRecord(transNum, prevLSN));
+        // step 2: update the current transaction table
         transactionEntry.lastLSN = LSN;
         transactionEntry.transaction.setStatus(Transaction.Status.ABORTING);
         return LSN;
@@ -135,35 +136,34 @@ public class ARIESRecoveryManager implements RecoveryManager {
      * Called when a transaction is cleaning up; this should roll back
      * changes if the transaction is aborting (see the rollbackToLSN helper
      * function below).
-     *
      * Any changes that need to be undone should be undone, the transaction should
      * be removed from the transaction table, the end record should be appended,
      * and the transaction status should be updated.
-     *
      * @param transNum transaction to end
      * @return LSN of the end record
+     * @process end of what? -> aborting transaction -> roll back and undo transaction
+     *           |                                         |
+     *           committing transaction -> append the record -> update transaction table (remove)
      */
     @Override
     public long end(long transNum) {
-        // TODO(proj5): implement
+        // step 1: judge the current transaction status
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
-        if (transactionEntry.transaction.getStatus() == Transaction.Status.ABORTING) {
-            rollbackToLSN(transNum, 0);
-        }
+        // step 1: If aborting
+        if (transactionEntry.transaction.getStatus() == Transaction.Status.ABORTING) rollbackToLSN(transNum, 0);
+        // step 2: append record
         long prevLSN = transactionEntry.lastLSN;
-        LogRecord record = new EndTransactionLogRecord(transNum, prevLSN);
-        long LSN = logManager.appendToLog(record);
-        // Update lastLSN
+        long LSN = logManager.appendToLog(new EndTransactionLogRecord(transNum, prevLSN));
+        // step 3: update the transaction table
         transactionEntry.lastLSN = LSN;
         transactionEntry.transaction.setStatus(Transaction.Status.COMPLETE);
-        // Remove the transaction table
         transactionTable.remove(transNum);
         return LSN;
     }
 
     /**
-     * Recommended helper function: performs a rollback of all of a
+     * Helper function: performs a rollback of all of a
      * transaction's actions, up to (but not including) a certain LSN.
      * Starting with the LSN of the most recent record that hasn't been undone:
      * - while the current LSN is greater than the LSN we're rolling back to:
@@ -172,7 +172,6 @@ public class ARIESRecoveryManager implements RecoveryManager {
      *       - Append the CLR
      *       - Call redo on the CLR to perform the undo
      *    - update the current LSN to that of the next record to undo
-     *
      * Note above that calling .undo() on a record does not perform the undo, it
      * just creates the compensation log record.
      *
@@ -180,23 +179,25 @@ public class ARIESRecoveryManager implements RecoveryManager {
      * @param LSN LSN to which we should rollback
      */
     private void rollbackToLSN(long transNum, long LSN) {
+        // starting from the last record
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         LogRecord lastRecord = logManager.fetchLogRecord(transactionEntry.lastLSN);
         long lastRecordLSN = lastRecord.getLSN();
-        // Small optimization: if the last record is a CLR we can start rolling
-        // back from the next record that hasn't yet been undone.
+        // if the record is CLR, indicating it have undone, we can get next LSN directly
         long currentLSN = lastRecord.getUndoNextLSN().orElse(lastRecordLSN);
-        // TODO(proj5) implement the rollback logic described above
+        // start from current LSN and go back search to undo
         while (currentLSN > LSN) {
             LogRecord current = logManager.fetchLogRecord(currentLSN);
             if (current.isUndoable()) {
-                LogRecord CLR = current.undo(lastRecordLSN);
-                lastRecordLSN = logManager.appendToLog(CLR);
-                CLR.redo(this, diskSpaceManager, bufferManager);
+                // writing ahead log
+                LogRecord CLR = current.undo(lastRecordLSN); // does not perform undo, just create a record
+                lastRecordLSN = logManager.appendToLog(CLR); // appending
+                CLR.redo(this, diskSpaceManager, bufferManager); // undo performance
             }
             currentLSN = current.getUndoNextLSN().isPresent() ?
                     current.getUndoNextLSN().get() : current.getPrevLSN().get();
         }
+        // update transaction table
         transactionEntry.lastLSN = lastRecordLSN;
     }
 
@@ -228,10 +229,8 @@ public class ARIESRecoveryManager implements RecoveryManager {
 
     /**
      * Called when a write to a page happens.
-     *
      * This method is never called on a log page. Arguments to the before and after params
      * are guaranteed to be the same length.
-     *
      * The appropriate log record should be appended, and the transaction table
      * and dirty page table should be updated accordingly.
      *
@@ -245,15 +244,15 @@ public class ARIESRecoveryManager implements RecoveryManager {
     @Override
     public long logPageWrite(long transNum, long pageNum, short pageOffset, byte[] before,
                              byte[] after) {
+        // ensure they are updating with same data type
         assert (before.length == after.length);
         assert (before.length <= BufferManager.EFFECTIVE_PAGE_SIZE / 2);
-        // TODO(proj5): implement
+        // append the record
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
         long prevLSN = transactionEntry.lastLSN;
-        LogRecord record = new UpdatePageLogRecord(transNum, pageNum, prevLSN, pageOffset, before, after);
-        long LSN = logManager.appendToLog(record);
-        // Update lastLSN
+        long LSN = logManager.appendToLog(new UpdatePageLogRecord(transNum, pageNum, prevLSN, pageOffset, before, after));
+        // Update transaction table and dirty page table, dirty page table keep the first update LSN
         transactionEntry.lastLSN = LSN;
         dirtyPageTable.putIfAbsent(pageNum, LSN);
         return LSN;
@@ -271,6 +270,9 @@ public class ARIESRecoveryManager implements RecoveryManager {
      * @param transNum transaction requesting the allocation
      * @param partNum partition number of the new partition
      * @return LSN of record or -1 if log partition
+     * @process append the record -> flush to disk -> update the transaction table
+     * - after this operation, the disk manager know that the transaction are moving
+     * - to another another partition to work
      */
     @Override
     public long logAllocPart(long transNum, int partNum) {
@@ -278,14 +280,13 @@ public class ARIESRecoveryManager implements RecoveryManager {
         if (partNum == 0) return -1L;
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
-
+        // append the record
         long prevLSN = transactionEntry.lastLSN;
-        LogRecord record = new AllocPartLogRecord(transNum, partNum, prevLSN);
-        long LSN = logManager.appendToLog(record);
-        // Update lastLSN
-        transactionEntry.lastLSN = LSN;
+        long LSN = logManager.appendToLog(new AllocPartLogRecord(transNum, partNum, prevLSN));
         // Flush log
         logManager.flushToLSN(LSN);
+        // Update lastLSN
+        transactionEntry.lastLSN = LSN;
         return LSN;
     }
 
@@ -301,22 +302,21 @@ public class ARIESRecoveryManager implements RecoveryManager {
      * @param transNum transaction requesting the partition be freed
      * @param partNum partition number of the partition being freed
      * @return LSN of record or -1 if log partition
+     * @process same as the previous allocation, however, it free one partition
      */
     @Override
     public long logFreePart(long transNum, int partNum) {
         // Ignore if part of the log.
         if (partNum == 0) return -1L;
-
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
-
+        // append the record
         long prevLSN = transactionEntry.lastLSN;
-        LogRecord record = new FreePartLogRecord(transNum, partNum, prevLSN);
-        long LSN = logManager.appendToLog(record);
-        // Update lastLSN
-        transactionEntry.lastLSN = LSN;
+        long LSN = logManager.appendToLog(new FreePartLogRecord(transNum, partNum, prevLSN));
         // Flush log
         logManager.flushToLSN(LSN);
+        // Update the transaction table
+        transactionEntry.lastLSN = LSN;
         return LSN;
     }
 
@@ -337,17 +337,15 @@ public class ARIESRecoveryManager implements RecoveryManager {
     public long logAllocPage(long transNum, long pageNum) {
         // Ignore if part of the log.
         if (DiskSpaceManager.getPartNum(pageNum) == 0) return -1L;
-
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
-
+        // append the record
         long prevLSN = transactionEntry.lastLSN;
-        LogRecord record = new AllocPageLogRecord(transNum, pageNum, prevLSN);
-        long LSN = logManager.appendToLog(record);
-        // Update lastLSN
-        transactionEntry.lastLSN = LSN;
+        long LSN = logManager.appendToLog(new AllocPageLogRecord(transNum, pageNum, prevLSN));
         // Flush log
         logManager.flushToLSN(LSN);
+        // Update lastLSN
+        transactionEntry.lastLSN = LSN;
         return LSN;
     }
 
@@ -363,23 +361,22 @@ public class ARIESRecoveryManager implements RecoveryManager {
      * @param transNum transaction requesting the page be freed
      * @param pageNum page number of the page being freed
      * @return LSN of record or -1 if log partition
+     * @process if the page is already free, then we can remove it from the dirty page
      */
     @Override
     public long logFreePage(long transNum, long pageNum) {
         // Ignore if part of the log.
         if (DiskSpaceManager.getPartNum(pageNum) == 0) return -1L;
-
         TransactionTableEntry transactionEntry = transactionTable.get(transNum);
         assert (transactionEntry != null);
-
+        // append the record first
         long prevLSN = transactionEntry.lastLSN;
-        LogRecord record = new FreePageLogRecord(transNum, pageNum, prevLSN);
-        long LSN = logManager.appendToLog(record);
-        // Update lastLSN
-        transactionEntry.lastLSN = LSN;
-        dirtyPageTable.remove(pageNum);
+        long LSN = logManager.appendToLog(new FreePageLogRecord(transNum, pageNum, prevLSN));
         // Flush log
         logManager.flushToLSN(LSN);
+        // Update lastLSN of TXN  and also update the dirty page table
+        transactionEntry.lastLSN = LSN;
+        dirtyPageTable.remove(pageNum);
         return LSN;
     }
 

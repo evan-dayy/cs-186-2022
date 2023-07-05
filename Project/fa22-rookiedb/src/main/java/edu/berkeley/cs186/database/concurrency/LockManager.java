@@ -101,10 +101,14 @@ public class LockManager {
         public boolean acquireLock(LockRequest request, boolean addFront) {
             if (checkCompatible(request.lock.lockType, request.lock.transactionNum) &&
                     (addFront || waitingQueue.isEmpty())) {
+                // two purpose:
+                // 1. add or update the lock
+                // 2. release all the locks that in the request released
                 processRequest(request);
                 return false;
             } else {
                 addToQueue(request, addFront);
+                // tell outside the transaction should be blocked
                 request.transaction.prepareBlock();
                 return true;
             }
@@ -125,14 +129,41 @@ public class LockManager {
         }
 
         /**
-         * Releases the lock `lock` and processes the queue. Assumes that the
-         * lock has been granted before.
+         * Releases the lock `lock` and processes the queue.
+         * Assumes that the lock has been granted before.
          */
         public void releaseLock(Lock lock) {
-            // TODO(proj4_part1): implement
+            // current resource remove it
             locks.remove(lock);
+            // corresponding transaction remove it
             transactionLocks.get(lock.transactionNum).remove(lock);
+            // only grab the first-X continuous locks
+            // there are no optimization here
+            // a possible optimization is that do as MongoDB do, grab
+            // all compatible locks in the queue.
             processQueue();
+        }
+
+        /**
+         * Grant locks to requests from front to back of the queue, stopping
+         * when the next lock cannot be granted. Once a request is completely
+         * granted, the transaction that made the request can be unblocked.
+         */
+        private void processQueue() {
+            Iterator<LockRequest> requests = waitingQueue.iterator();
+            while (requests.hasNext()) {
+                LockRequest request = requests.next();
+                if (checkCompatible(request.lock.lockType, request.lock.transactionNum)) {
+                    processRequest(request);
+                    waitingQueue.removeFirst();
+                    // unblock the current transaction
+                    // this will invoke the signal method in Condition class
+                    // and another thread to change the blocked status
+                    request.transaction.unblock();
+                } else {
+                    break;
+                }
+            }
         }
 
 
@@ -149,34 +180,10 @@ public class LockManager {
             }
         }
 
-
-
-        /**
-         * Grant locks to requests from front to back of the queue, stopping
-         * when the next lock cannot be granted. Once a request is completely
-         * granted, the transaction that made the request can be unblocked.
-         */
-        private void processQueue() {
-            Iterator<LockRequest> requests = waitingQueue.iterator();
-            // TODO(proj4_part1): implement
-            while (requests.hasNext()) {
-                LockRequest request = requests.next();
-                if (checkCompatible(request.lock.lockType, request.lock.transactionNum)) {
-                    processRequest(request);
-                    waitingQueue.removeFirst();
-                    // unblock the current transaction
-                    request.transaction.unblock();
-                } else {
-                    break;
-                }
-            }
-        }
-
         /**
          * Gets the type of lock `transaction` has on this resource.
          */
         public LockType getTransactionLockType(long transaction) {
-            // TODO(proj4_part1): implement
             for (Lock lock : locks) {
                 if (lock.transactionNum == transaction) {
                     return lock.lockType;
@@ -230,19 +237,19 @@ public class LockManager {
     public void acquireAndRelease(TransactionContext transaction, ResourceName name,
                                   LockType lockType, List<ResourceName> releaseNames)
             throws DuplicateLockRequestException, NoLockHeldException {
-        // TODO(proj4_part1): implement
-        // You may modify any part of this method. You are not required to keep
-        // all your code within the given synchronized block and are allowed to
-        // move the synchronized block elsewhere if you wish.
         boolean shouldBlock = false;
+        // Synchronized block, to make sure the call to this block are serial are there
+        // should not have interleaving of different call
         synchronized (this) {
+            // the name has one lock of this transaction and it did not plan
+            // to release it, then suggesting the transaction add two locks to this resource
             if (!releaseNames.contains(name)) {
                 checkDuplicateLockRequest(transaction, name);
             }
+            // check whether the transaction have that lock in the released resource
             for (ResourceName releaseName : releaseNames) {
                 checkNoLockHeld(transaction, releaseName);
             }
-
             List<Lock> releasedLocks = new ArrayList<>();
             for (ResourceName releaseName : releaseNames) {
                 LockType releaseLockType = getLockType(transaction, releaseName);
@@ -254,7 +261,14 @@ public class LockManager {
             LockRequest request = new LockRequest(transaction, lock, releasedLocks);
             shouldBlock = getResourceEntry(name).acquireLock(request, true);
         }
+        // why we should block outside the synchronized block?
+        // synchronized block only allow one thread to access and
+        // if you block inside it, you put the entire thread in a infinite loop
+        // only lock Manager can unblock, but right now if we are in synchronized block,
+        // the logManager cannot accept any other call
         if (shouldBlock) {
+            // put the transaction's thread into a while infinite loop
+            // need another thread to change the status
             transaction.block();
         }
     }
@@ -272,14 +286,9 @@ public class LockManager {
      */
     public void acquire(TransactionContext transaction, ResourceName name,
                         LockType lockType) throws DuplicateLockRequestException {
-        // TODO(proj4_part1): implement
-        // You may modify any part of this method. You are not required to keep all your
-        // code within the given synchronized block and are allowed to move the
-        // synchronized block elsewhere if you wish.
         boolean shouldBlock = false;
         synchronized (this) {
             checkDuplicateLockRequest(transaction, name);
-
             Lock lock = new Lock(name, lockType, transaction.getTransNum());
             LockRequest request = new LockRequest(transaction, lock);
             shouldBlock = getResourceEntry(name).acquireLock(request, false);
@@ -301,11 +310,8 @@ public class LockManager {
      */
     public void release(TransactionContext transaction, ResourceName name)
             throws NoLockHeldException {
-        // TODO(proj4_part1): implement
-        // You may modify any part of this method.
         synchronized (this) {
             checkNoLockHeld(transaction, name);
-
             LockType lockType = getLockType(transaction, name);
             Lock lock = new Lock(name, lockType, transaction.getTransNum());
             getResourceEntry(name).releaseLock(lock);

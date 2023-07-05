@@ -3,10 +3,9 @@ package edu.berkeley.cs186.database.concurrency;
 import edu.berkeley.cs186.database.TransactionContext;
 
 /**
- * LockUtil is a declarative layer which simplifies multigranularity lock
- * acquisition for the user (you, in the last task of Part 2). Generally
- * speaking, you should use LockUtil for lock acquisition instead of calling
- * LockContext methods directly.
+ * LockUtil is a declarative layer which simplifies multi-granularity lock
+ * acquisition for the user. It will help the transaction to ensure the
+ * multi-granularity lock.
  */
 public class LockUtil {
     /**
@@ -25,8 +24,6 @@ public class LockUtil {
      *   lock type can be, and think about how ancestor looks will need to be
      *   acquired or changed.
      *
-     * You may find it useful to create a helper method that ensures you have
-     * the appropriate locks on all ancestors.
      */
     public static void ensureSufficientLockHeld(LockContext lockContext, LockType requestType) {
         // requestType must be S, X, or NL
@@ -36,18 +33,17 @@ public class LockUtil {
         TransactionContext transaction = TransactionContext.getTransaction();
         if (transaction == null || lockContext == null) return;
 
-        // You may find these variables useful
         LockContext parentContext = lockContext.parentContext();
         LockType effectiveLockType = lockContext.getEffectiveLockType(transaction);
         LockType currentLockType = lockContext.lockman.getLockType(transaction, lockContext.name);
 
-        // TODO(proj4_part2): implement
         if (LockType.substitutable(effectiveLockType, requestType)) {
             // The current lock type can effectively substitute the requested type
             return;
         } else if (currentLockType == LockType.IX && requestType == LockType.S) {
             // The current lock type is IX and the requested lock is S
             requestType = LockType.SIX;
+            // recursive call to change its parent
             ensureSufficientIntent(parentContext, requestType);
             lockContext.promote(transaction, requestType);
         } else if (currentLockType.isIntent()) {
@@ -65,7 +61,9 @@ public class LockUtil {
         }
     }
 
-    // TODO(proj4_part2) add any helper methods you want
+    /**
+     * Recursive Process to maintain the multi-granularity lock
+     */
     public static void ensureSufficientIntent(LockContext lockContext, LockType requestType) {
         // Do nothing if the transaction or lockContext is null
         TransactionContext transaction = TransactionContext.getTransaction();
@@ -73,13 +71,12 @@ public class LockUtil {
 
         LockContext parentContext = lockContext.parentContext();
         LockType currentLockType = lockContext.lockman.getLockType(transaction, lockContext.name);
-
         LockType requestIntent = LockType.parentLock(requestType);
+
         if (!LockType.canBeParentLock(currentLockType, requestType)) {
             if (currentLockType == LockType.S && requestIntent == LockType.IX) {
                 requestIntent = LockType.SIX;
             }
-
             ensureSufficientIntent(parentContext, requestIntent);
             if (currentLockType == LockType.NL) {
                 lockContext.acquire(transaction, requestIntent);

@@ -31,10 +31,11 @@ import java.util.*;
  * processed.
  */
 public class LockManager {
+    // dimension 1. How many locks in one transaction
     // transactionLocks is a mapping from transaction number to a list of lock
     // objects held by that transaction.
     private Map<Long, List<Lock>> transactionLocks = new HashMap<>();
-
+    // dimension 2. How may locks in one resource (such as one table, one record)
     // resourceEntries is a mapping from resource names to a ResourceEntry
     // object, which contains a list of Locks on the object, as well as a
     // queue for requests on that resource.
@@ -56,9 +57,11 @@ public class LockManager {
          * conflicts for locks held by transaction with id `except`, which is
          * useful when a transaction tries to replace a lock it already has on
          * the resource.
+         *
+         * @except since one transaction can only one lock at one time, as a result
+         * if the lock is the transaction itself, we do not need to care on it.
          */
         public boolean checkCompatible(LockType lockType, long except) {
-            // TODO(proj4_part1): implement
             for (Lock lock : locks) {
                 if (lock.transactionNum == except) continue;
                 if (!LockType.compatible(lock.lockType, lockType)) {
@@ -69,18 +72,22 @@ public class LockManager {
         }
 
         /**
-         * Gives the transaction the lock `lock`. Assumes that the lock is
-         * compatible. Updates lock on resource if the transaction already has a
-         * lock.
+         * Gives the transaction the lock `lock`.
+         * Assumes that the lock is compatible.
+         * Updates lock on resource if the transaction already has a lock.
          */
         public void grantOrUpdateLock(Lock newLock) {
-            // TODO(proj4_part1): implement
             for (Lock lock : locks) {
                 if (lock.transactionNum == newLock.transactionNum) {
+                    // as we mentioned in previous @except, the the lock's transaction
+                    // is same as the newLock's transaction, directly change lock type
                     lock.lockType = newLock.lockType;
                     return;
                 }
             }
+            // update two dimension:
+            // transaction's lock
+            // resource's lock
             locks.add(newLock);
             transactionLocks.computeIfAbsent(newLock.transactionNum, (x) -> new ArrayList<>()).add(newLock);
         }
@@ -100,6 +107,20 @@ public class LockManager {
                 addToQueue(request, addFront);
                 request.transaction.prepareBlock();
                 return true;
+            }
+        }
+
+        /**
+         * Process the request by updating the lock in the current resource and
+         * releasing locks in other resources.
+         */
+        private void processRequest(LockRequest request) {
+            grantOrUpdateLock(request.lock);
+            for (Lock lock : request.releasedLocks) {
+                ResourceEntry resourceEntry = getResourceEntry(lock.name);
+                if (resourceEntry != this) {
+                    resourceEntry.releaseLock(lock);
+                }
             }
         }
 
@@ -128,19 +149,7 @@ public class LockManager {
             }
         }
 
-        /**
-         * Process the request by updating the lock in the current resource and
-         * releasing locks in other resources.
-         */
-        private void processRequest(LockRequest request) {
-            grantOrUpdateLock(request.lock);
-            for (Lock lock : request.releasedLocks) {
-                ResourceEntry resourceEntry = getResourceEntry(lock.name);
-                if (resourceEntry != this) {
-                    resourceEntry.releaseLock(lock);
-                }
-            }
-        }
+
 
         /**
          * Grant locks to requests from front to back of the queue, stopping

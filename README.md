@@ -17,3 +17,9 @@ Version Based on Fall-2022 + Addtional Contents on Spring 2023
 10. Distributed Transaction and 2 Phase Commit
 11. NoSQL and MongoDB
 12. Spark and MapReduce
+
+**SnowFlake Guest Lecture**
+The guest lectures mainly cover three parts: 
+1. Snowflake parallel architecture (Central cloud storage, Muti-Cluster computes)
+2. Data Collaboration and Data Application (data sharing with share and replication across the data center)
+3. Snowflake Simplicity (partioning, indexing, ording, OLAP | OLTP work style)

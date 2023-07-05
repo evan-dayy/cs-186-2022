@@ -199,9 +199,6 @@ public class LockManager {
         }
     }
 
-    // You should not modify or use this directly.
-    private Map<String, LockContext> contexts = new HashMap<>();
-
     /**
      * Helper method to fetch the resourceEntry corresponding to `name`.
      * Inserts a new (empty) resourceEntry into the map if no entry exists yet.
@@ -342,14 +339,11 @@ public class LockManager {
     public void promote(TransactionContext transaction, ResourceName name,
                         LockType newLockType)
             throws DuplicateLockRequestException, NoLockHeldException, InvalidLockException {
-        // TODO(proj4_part1): implement
-        // You may modify any part of this method.
         boolean shouldBlock = false;
         synchronized (this) {
             checkDuplicateLockRequest(transaction, name, newLockType);
             checkNoLockHeld(transaction, name);
             checkInvalidLock(transaction, name, newLockType);
-
             Lock lock = new Lock(name, newLockType, transaction.getTransNum());
             LockRequest request = new LockRequest(transaction, lock);
             shouldBlock = getResourceEntry(name).acquireLock(request, true);
@@ -359,7 +353,7 @@ public class LockManager {
         }
     }
 
-
+    //////////////// Helper Method and Customer Check
     /**
      * Returns the list of locks held on `name`, in order of acquisition.
      */
@@ -383,25 +377,6 @@ public class LockManager {
         // TODO(proj4_part1): implement
         ResourceEntry resourceEntry = getResourceEntry(name);
         return resourceEntry.getTransactionLockType(transaction.getTransNum());
-    }
-
-    /**
-     * Creates a lock context. See comments at the top of this file and the top
-     * of LockContext.java for more information.
-     */
-    public synchronized LockContext context(String name) {
-        if (!contexts.containsKey(name)) {
-            contexts.put(name, new LockContext(this, null, name));
-        }
-        return contexts.get(name);
-    }
-
-    /**
-     * Create a lock context for the database. See comments at the top of this
-     * file and the top of LockContext.java for more information.
-     */
-    public synchronized LockContext databaseContext() {
-        return context("database");
     }
 
     private synchronized void checkDuplicateLockRequest(TransactionContext transaction,
@@ -436,7 +411,9 @@ public class LockManager {
         }
     }
 
-
+    /**
+     *  the method is within a synchronized block
+     */
     private synchronized void checkInvalidLock(TransactionContext transaction, ResourceName name,
                                                LockType newLockType)
             throws InvalidLockException {
@@ -446,6 +423,30 @@ public class LockManager {
                     "the requested lock type is not a promotion"
             );
         }
+    }
+
+    /////////// Context Related
+
+    // You should not modify or use this directly.
+    private Map<String, LockContext> contexts = new HashMap<>();
+
+    /**
+     * Creates a lock context. See comments at the top of this file and the top
+     * of LockContext.java for more information.
+     */
+    public synchronized LockContext context(String name) {
+        if (!contexts.containsKey(name)) {
+            contexts.put(name, new LockContext(this, null, name));
+        }
+        return contexts.get(name);
+    }
+
+    /**
+     * Create a lock context for the database. See comments at the top of this
+     * file and the top of LockContext.java for more information.
+     */
+    public synchronized LockContext databaseContext() {
+        return context("database");
     }
 
 }

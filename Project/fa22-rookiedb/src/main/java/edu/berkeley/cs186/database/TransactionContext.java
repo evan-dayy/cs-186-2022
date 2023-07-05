@@ -32,6 +32,7 @@ import java.util.function.UnaryOperator;
  * block() is called.
  */
 public abstract class TransactionContext implements AutoCloseable {
+    // ID -> threadContext
     static Map<Long, TransactionContext> threadTransactions = new ConcurrentHashMap<>();
     private boolean blocked = false;
     private boolean startBlock = false;

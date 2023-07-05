@@ -406,8 +406,7 @@ public class Table implements BacktrackingIterable<Record> {
      */
     public BacktrackingIterator<RecordId> ridIterator() {
         // TODO(proj4_part2): Update the following line
-        LockUtil.ensureSufficientLockHeld(tableContext, LockType.NL);
-
+        LockUtil.ensureSufficientLockHeld(tableContext, LockType.S);
         BacktrackingIterator<Page> iter = pageDirectory.iterator();
         return new ConcatBacktrackingIterator<>(new PageIterator(iter, false));
     }

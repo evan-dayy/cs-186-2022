@@ -211,7 +211,7 @@ def run_question(query_dir, question, batch_size):
 def run_query(query, batch_size, question):
     query = "DBQuery.shellBatchSize = {}; {}".format(batch_size, query)
     r = subprocess.run(
-        ["mongo", "--port", str(port), "movies", "--eval", query],
+        ["mongosh", "--port", str(port), "movies", "--eval", query],
         stdout=subprocess.PIPE
     )
     lines = []

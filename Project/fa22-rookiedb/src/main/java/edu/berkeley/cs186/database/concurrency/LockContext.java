@@ -33,6 +33,8 @@ public class LockContext {
 
     // A mapping between transaction numbers, and the number of locks on children of this LockContext
     // that the transaction holds.
+    // a resource may have different locks from different transactions
+    // use this to specific how many children context exactly
     protected final Map<Long, Integer> numChildLocks;
 
     // You should not modify or use this directly.
@@ -66,7 +68,9 @@ public class LockContext {
     public static LockContext fromResourceName(LockManager lockman, ResourceName name) {
         Iterator<String> names = name.getNames().iterator();
         LockContext ctx;
+        // n1 must be database, since every resource name start from here
         String n1 = names.next();
+        // directly create a database context
         ctx = lockman.context(n1);
         while (names.hasNext()) {
             String n = names.next();
@@ -74,6 +78,26 @@ public class LockContext {
         }
         return ctx;
     }
+
+    /**
+     * Gets the context for the child with name `name` and readable name
+     * `readable`
+     */
+    public synchronized LockContext childContext(String name) {
+        LockContext temp = new LockContext(lockman, this, name,
+                this.childLocksDisabled || this.readonly);
+        LockContext child = this.children.putIfAbsent(name, temp);
+        if (child == null) child = temp;
+        return child;
+    }
+
+    /**
+     * Gets the context for the child with name `name`.
+     */
+    public synchronized LockContext childContext(long name) {
+        return childContext(Long.toString(name));
+    }
+
 
     /**
      * Get the name of the resource that this lock context pertains to.
@@ -85,9 +109,6 @@ public class LockContext {
     /**
      * Acquire a `lockType` lock, for transaction `transaction`.
      *
-     * Note: you must make any necessary updates to numChildLocks, or else calls
-     * to LockContext#getNumChildren will not work properly.
-     *
      * @throws InvalidLockException if the request is invalid
      * @throws DuplicateLockRequestException if a lock is already held by the
      * transaction.
@@ -95,13 +116,11 @@ public class LockContext {
      */
     public void acquire(TransactionContext transaction, LockType lockType)
             throws InvalidLockException, DuplicateLockRequestException {
-        // TODO(proj4_part2): implement
         if (readonly) throw new UnsupportedOperationException();
-
         if (!multigranularityCheck(transaction, lockType)) {
+            // if the lock type is share, then the parent lock should be IS or IX
             throw new InvalidLockException("the request is invalid");
         }
-
         lockman.acquire(transaction, name, lockType);
         if (parent != null) {
             parent.numChildLocks.put(transaction.getTransNum(),
@@ -112,9 +131,6 @@ public class LockContext {
     /**
      * Release `transaction`'s lock on `name`.
      *
-     * Note: you *must* make any necessary updates to numChildLocks, or
-     * else calls to LockContext#getNumChildren will not work properly.
-     *
      * @throws NoLockHeldException if no lock on `name` is held by `transaction`
      * @throws InvalidLockException if the lock cannot be released because
      * doing so would violate multigranularity locking constraints
@@ -122,13 +138,11 @@ public class LockContext {
      */
     public void release(TransactionContext transaction)
             throws NoLockHeldException, InvalidLockException {
-        // TODO(proj4_part2): implement
         if (readonly) throw new UnsupportedOperationException();
-
         if (getNumChildren(transaction) != 0) {
+            // cannot release the lock since there are children down there
             throw new InvalidLockException("the lock cannot be released");
         }
-
         lockman.release(transaction, name);
         if (parent != null) {
             parent.numChildLocks.put(transaction.getTransNum(),
@@ -140,9 +154,6 @@ public class LockContext {
      * Promote `transaction`'s lock to `newLockType`. For promotion to SIX from
      * IS/IX, all S and IS locks on descendants must be simultaneously
      * released. The helper function sisDescendants may be helpful here.
-     *
-     * Note: you *must* make any necessary updates to numChildLocks, or else
-     * calls to LockContext#getNumChildren will not work properly.
      *
      * @throws DuplicateLockRequestException if `transaction` already has a
      * `newLockType` lock
@@ -157,7 +168,6 @@ public class LockContext {
      */
     public void promote(TransactionContext transaction, LockType newLockType)
             throws DuplicateLockRequestException, NoLockHeldException, InvalidLockException {
-        // TODO(proj4_part2): implement
         if (readonly) throw new UnsupportedOperationException();
 
         LockType lockType = lockman.getLockType(transaction, name);
@@ -208,17 +218,12 @@ public class LockContext {
      * transaction do not change (such as when you call escalate multiple times
      * in a row).
      *
-     * Note: you *must* make any necessary updates to numChildLocks of all
-     * relevant contexts, or else calls to LockContext#getNumChildren will not
-     * work properly.
-     *
      * @throws NoLockHeldException if `transaction` has no lock at this level
      * @throws UnsupportedOperationException if context is readonly
+     * @aims get a coarse-grained lock at a higher level and release its lock on its children
      */
     public void escalate(TransactionContext transaction) throws NoLockHeldException {
-        // TODO(proj4_part2): implement
         if (readonly) throw new UnsupportedOperationException();
-
         LockType newLockType = escalateType(transaction);
         List<ResourceName> releaseNames = descendantWithLocks(transaction);
         releaseNames.add(name);
@@ -234,8 +239,6 @@ public class LockContext {
      */
     public LockType getExplicitLockType(TransactionContext transaction) {
         if (transaction == null) return LockType.NL;
-        // TODO(proj4_part2): implement
-
         LockType lockType = lockman.getLockType(transaction, name);
         return lockType.getExplicit();
     }
@@ -248,7 +251,6 @@ public class LockContext {
      */
     public LockType getEffectiveLockType(TransactionContext transaction) {
         if (transaction == null) return LockType.NL;
-        // TODO(proj4_part2): implement
         LockType lockType = getExplicitLockType(transaction);
         List<Lock> locks = lockman.getLocks(transaction);
         for (Lock lock : locks) {
@@ -267,7 +269,6 @@ public class LockContext {
      * @return true if holds a SIX at an ancestor, false if not
      */
     private boolean hasSIXAncestor(TransactionContext transaction) {
-        // TODO(proj4_part2): implement
         List<Lock> locks = lockman.getLocks(transaction);
         for (Lock lock : locks) {
             if (name.isDescendantOf(lock.name) && lock.lockType == LockType.SIX) {
@@ -285,7 +286,6 @@ public class LockContext {
      * holds an S or IS lock.
      */
     private List<ResourceName> sisDescendants(TransactionContext transaction) {
-        // TODO(proj4_part2): implement
         List<Lock> locks = lockman.getLocks(transaction);
         List<ResourceName> names = new ArrayList<>();
         for (Lock lock : locks) {
@@ -316,24 +316,6 @@ public class LockContext {
         return parent;
     }
 
-    /**
-     * Gets the context for the child with name `name` and readable name
-     * `readable`
-     */
-    public synchronized LockContext childContext(String name) {
-        LockContext temp = new LockContext(lockman, this, name,
-                this.childLocksDisabled || this.readonly);
-        LockContext child = this.children.putIfAbsent(name, temp);
-        if (child == null) child = temp;
-        return child;
-    }
-
-    /**
-     * Gets the context for the child with name `name`.
-     */
-    public synchronized LockContext childContext(long name) {
-        return childContext(Long.toString(name));
-    }
 
     /**
      * Gets the number of locks held on children a single transaction.

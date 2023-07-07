@@ -172,7 +172,6 @@ public class LockManager {
          * the end otherwise.
          */
         public void addToQueue(LockRequest request, boolean addFront) {
-            // TODO(proj4_part1): implement
             if (addFront) {
                 waitingQueue.addFirst(request);
             } else {

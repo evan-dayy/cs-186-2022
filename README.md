@@ -1,4 +1,4 @@
-# cs-186-22Fall + 23Spring
+# cs-186-22Fall + 23Spring [finished]
 Version Based on Fall-2022 + Addtional Contents on Spring 2023
 
 ![The official unofficial mascot of the class projects](Project/fa22-rookiedb/images/derpydb-small.jpg)
